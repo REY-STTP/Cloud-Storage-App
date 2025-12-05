@@ -1,26 +1,302 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+html,
+body,
+.navbar,
+.card,
+.table,
+input,
+button,
+a {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+/* ========== LANDING + AUTH ========== */
+
+.home-landing {
+  background: radial-gradient(circle at top left, #e5f0ff 0, transparent 50%),
+    radial-gradient(circle at bottom right, #e0f7f4 0, transparent 50%),
+    #f1f5f9;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html.dark .home-landing {
+  background: radial-gradient(circle at top left, #1d3557 0, transparent 50%),
+    radial-gradient(circle at bottom right, #065f46 0, transparent 55%),
+    #020617;
+}
+
+.landing-card {
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #020617;
+}
+
+html.dark .landing-card {
+  background-color: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  border-color: #1f2937;
+}
+
+.landing-mini-card {
+  background-color: rgba(248, 250, 252, 0.8);
+}
+
+html.dark .landing-mini-card {
+  background-color: rgba(2, 6, 23, 0.7);
+}
+
+.landing-pill {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  color: #64748b;
+}
+
+html.dark .landing-pill {
+  background-color: rgba(15, 23, 42, 0.85);
+  border-color: rgba(51, 65, 85, 0.9);
+  color: #cbd5f5;
+}
+
+
+/* ========== DASHBOARD / APP PAGES ========== */
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-shell-main {
+  padding: 2.5rem 1.5rem 3rem;
+}
+
+@media (min-width: 992px) {
+  .app-shell-main {
+    padding-top: 3rem;
   }
 }
 
+.app-section-header {
+  margin-bottom: 1.75rem;
+}
+
+.app-section-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.app-section-subtitle {
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+html.dark .app-section-subtitle {
+  color: #cbd5f5;
+}
+
+.app-table-wrapper {
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.app-table thead {
+  background-color: #f8fafc;
+}
+
+html.dark .app-table thead {
+  background-color: rgba(15, 23, 42, 0.9);
+}
+
+/* ========== ADMIN USERS LIST ========== */
+
+/* Card utama list user (bikin sedikit beda dari landing-card default) */
+.admin-users-card {
+  border-radius: 1.25rem;
+}
+
+/* Container list dengan border halus */
+.admin-users-list {
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35); /* slate-400-ish */
+  overflow: hidden;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+html.dark .admin-users-list {
+  border-color: rgba(51, 65, 85, 0.9); /* slate-700-ish */
+  background: rgba(15, 23, 42, 0.9);
+}
+
+/* Satu row user */
+.admin-user-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9); /* slate-200-ish */
+}
+
+.admin-user-row:last-child {
+  border-bottom: none;
+}
+
+.admin-user-row:hover {
+  background: rgba(241, 245, 249, 0.9); /* slate-100-ish */
+}
+
+html.dark .admin-user-row {
+  border-bottom-color: rgba(30, 64, 175, 0.4); /* bluish divider */
+}
+
+html.dark .admin-user-row:hover {
+  background: rgba(15, 23, 42, 0.95);
+}
+
+/* Header kolom di desktop */
+.admin-users-head {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+html.dark .admin-users-head {
+  color: #cbd5f5;
+}
+
+/* Email & meta info */
+.admin-user-email {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+html.dark .admin-user-email {
+  color: #cbd5f5;
+}
+
+/* ========== USER FILES LIST ========== */
+
+.user-files-card {
+  border-radius: 1.25rem;
+}
+
+/* Container list file */
+.user-files-list {
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35); /* slate-400-ish */
+  overflow: hidden;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+html.dark .user-files-list {
+  border-color: rgba(51, 65, 85, 0.9); /* slate-700-ish */
+  background: rgba(15, 23, 42, 0.9);
+}
+
+/* Satu baris file */
+.user-file-row {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9); /* slate-200-ish */
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.user-file-row:last-child {
+  border-bottom: none;
+}
+
+.user-file-row:hover {
+  background: rgba(241, 245, 249, 0.9); /* slate-100-ish */
+}
+
+html.dark .user-file-row {
+  border-bottom-color: rgba(30, 64, 175, 0.4);
+}
+
+html.dark .user-file-row:hover {
+  background: rgba(15, 23, 42, 0.95);
+}
+
+/* Meta size + date */
+.user-file-meta {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+html.dark .user-file-meta {
+  color: #cbd5f5;
+}
+
+/* ========== GLOBAL (BODY, NAVBAR, CARD, TABLE) ========== */
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background-color: #f1f5f9;
+  color: #020617;
+}
+
+.navbar {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.card {
+  border-radius: 0.75rem;
+}
+
+.table {
+  margin-bottom: 0;
+}
+
+html.dark body {
+  background-color: #020617;
+  color: #e5e7eb;
+}
+
+html.dark .navbar {
+  background-color: #020617 !important;
+  border-bottom: 1px solid #111827;
+}
+
+html.dark .card {
+  background-color: #020617;
+  color: #e5e7eb;
+  border-color: #1f2937;
+}
+
+html.dark .table {
+  background-color: #020617 !important;
+  color: #e5e7eb !important;
+  border-color: #1f2937 !important;
+}
+
+html.dark .table thead th {
+  background-color: #020617 !important;
+  color: #e5e7eb !important;
+  border-color: #1f2937 !important;
+}
+
+html.dark .table tbody tr {
+  background-color: #020617 !important;
+  border-color: #1f2937 !important;
+}
+
+html.dark .table tbody td {
+  background-color: #020617 !important;
+  color: #e5e7eb !important;
+  border-color: #1f2937 !important;
+}
+
+html.dark .table-striped > tbody > tr:nth-of-type(odd) > * {
+  --bs-table-bg-type: #020617 !important;
+}
+
+html.dark .text-muted,
+html.dark .small.text-muted {
+  color: #e5e7eb !important;
 }
