@@ -4,10 +4,9 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import jwt from "jsonwebtoken";
+import { verifyToken } from "@/lib/mail";
 
 export const runtime = "nodejs";
-
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this";
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,9 +24,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Password must be at least 6 characters" }, { status: 400 });
     }
 
-    let decoded: any;
+    let decoded;
     try {
-      decoded = jwt.verify(token, JWT_SECRET);
+      decoded = verifyToken(token);
     } catch (err) {
       if (err instanceof jwt.TokenExpiredError) {
         return NextResponse.json({ message: "Token has expired" }, { status: 400 });
@@ -67,3 +66,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }
+
