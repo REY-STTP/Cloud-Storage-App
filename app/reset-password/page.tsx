@@ -1,8 +1,8 @@
 // app/reset-password/page.tsx
 "use client";
 
+import { FormEvent, useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
 
 interface Toast {
   id: string;
@@ -10,7 +10,7 @@ interface Toast {
   message: string;
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -231,5 +231,21 @@ export default function ResetPasswordPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="home-landing app-shell">
+        <div className="container app-shell-main text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+    }>
+      <ResetPasswordPageContent />
+    </Suspense>
   );
 }

@@ -1,7 +1,7 @@
 // app/dashboard/profile/page.tsx
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface Profile {
@@ -107,7 +107,7 @@ function ConfirmDialog({
   );
 }
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -560,5 +560,21 @@ export default function ProfilePage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={
+      <div className="home-landing app-shell">
+        <div className="container app-shell-main text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+    }>
+      <ProfilePageContent />
+    </Suspense>
   );
 }

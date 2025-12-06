@@ -1,7 +1,7 @@
 // app/verify-email/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface Toast {
@@ -10,7 +10,7 @@ interface Toast {
   message: string;
 }
 
-export default function VerifyEmailPage() {
+function VerifyEmailPageContent() {
   const params = useSearchParams();
   const token = params?.get("token") || "";
 
@@ -147,5 +147,21 @@ export default function VerifyEmailPage() {
         {status === "error" && <div className="alert alert-danger">{msg}</div>}
       </div>
     </main>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <div className="home-landing app-shell">
+        <div className="container app-shell-main text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+    }>
+      <VerifyEmailPageContent />
+    </Suspense>
   );
 }
