@@ -3,12 +3,36 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { hashPassword, signJwt } from "@/lib/auth";
 
+const ALLOWED_DOMAINS = [
+  "gmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+];
+
 export async function POST(req: NextRequest) {
   try {
     const { name, email, password } = await req.json();
 
     if (!name || !email || !password) {
       return NextResponse.json({ message: "Fields are empty" }, { status: 400 });
+    }
+
+    const emailDomain = email.split("@")[1]?.toLowerCase();
+
+    if (!emailDomain) {
+      return NextResponse.json(
+        { message: "Invalid email format" },
+        { status: 400 }
+      );
+    }
+
+    if (!ALLOWED_DOMAINS.includes(emailDomain)) {
+      return NextResponse.json(
+        { message: `Email domain '${emailDomain}' is not allowed. Please use email from: ${ALLOWED_DOMAINS.join(", ")}` },
+        { status: 400 }
+      );
     }
 
     await connectDB();

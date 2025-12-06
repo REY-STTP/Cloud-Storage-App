@@ -25,7 +25,7 @@ export default function LoginPage() {
     setToasts((prev) => [...prev, { id, type, message }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 5000);
+    }, 3000);
   };
 
   const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));

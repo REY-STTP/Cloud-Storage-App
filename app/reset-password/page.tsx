@@ -28,7 +28,7 @@ function ResetPasswordPageContent() {
   const showToast = (type: Toast["type"], message: string) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
     setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   };
 
   const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));

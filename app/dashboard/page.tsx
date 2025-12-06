@@ -154,10 +154,9 @@ export default function DashboardPage() {
   const showToast = (type: Toast["type"], message: string) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
     setToasts((prev) => [...prev, { id, type, message }]);
-
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 5000);
+    }, 3000);
   };
 
   const removeToast = (id: string) => {
