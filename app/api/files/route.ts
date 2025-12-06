@@ -1,6 +1,7 @@
 // app/api/files/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
+import { User } from "@/models/User";
 import { File as FileModel } from "@/models/File";
 import { verifyJwt } from "@/lib/auth";
 import { v2 as cloudinary } from "cloudinary";
@@ -134,6 +135,19 @@ export async function POST(req: NextRequest) {
   }
 
   await connectDB();
+
+  const user = await User.findById(payload.userId).select("verified").lean();
+
+  if (!user) {
+    return NextResponse.json({ message: "User not found" }, { status: 404 });
+  }
+
+  if (!user.verified) {
+    return NextResponse.json(
+      { message: "Please verify your email in profile before uploading files" },
+      { status: 403 }
+    );
+  }
 
   const formData = await req.formData();
   const files = formData.getAll("files") as File[];

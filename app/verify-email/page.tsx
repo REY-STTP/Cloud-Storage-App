@@ -77,7 +77,14 @@ function VerifyEmailPageContent() {
   }, [token]);
 
   return (
-    <main className="container py-6">
+    <main style={{ 
+      minHeight: "100vh", 
+      display: "flex", 
+      alignItems: "center", 
+      justifyContent: "center",
+      padding: "1rem",
+      backgroundColor: "#f8f9fa"
+    }}>
       <div
         style={{
           position: "fixed",
@@ -170,12 +177,40 @@ function VerifyEmailPageContent() {
         }
       `}</style>
 
-      <div className="card p-4">
-        <h2>Verify email</h2>
+      <div 
+        className="card shadow-lg" 
+        style={{ 
+          width: "400px",
+          padding: "3rem 2rem",
+          borderRadius: "12px"
+        }}
+      >
+        <div className="text-center">
+          <h2 className="mb-4">Verify Email</h2>
 
-        {status === "loading" && <p>Verifying...</p>}
-        {status === "success" && <div className="alert alert-success">{msg}</div>}
-        {status === "error" && <div className="alert alert-danger">{msg}</div>}
+          {status === "loading" && (
+            <div>
+              <div className="spinner-border text-primary mb-3" role="status" style={{ width: "3rem", height: "3rem" }}>
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p className="text-muted">Verifying your email...</p>
+            </div>
+          )}
+          
+          {status === "success" && (
+            <div>
+              <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>✅</div>
+              <div className="alert alert-success mb-0">{msg}</div>
+            </div>
+          )}
+          
+          {status === "error" && (
+            <div>
+              <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>❌</div>
+              <div className="alert alert-danger mb-0">{msg}</div>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
@@ -184,10 +219,18 @@ function VerifyEmailPageContent() {
 export default function VerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div className="home-landing app-shell">
-        <div className="container app-shell-main text-center py-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
+      <div style={{ 
+        minHeight: "100vh", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "center",
+        backgroundColor: "#f8f9fa"
+      }}>
+        <div className="card shadow-lg" style={{ width: "400px", padding: "3rem 2rem", borderRadius: "12px" }}>
+          <div className="text-center">
+            <div className="spinner-border text-primary" role="status" style={{ width: "3rem", height: "3rem" }}>
+              <span className="visually-hidden">Loading...</span>
+            </div>
           </div>
         </div>
       </div>
