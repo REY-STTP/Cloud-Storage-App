@@ -52,53 +52,77 @@ export default function ForgotPasswordPage() {
 
   return (
     <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
-      <div style={{
-        position: "fixed",
-        top: "20px",
-        right: "20px",
-        zIndex: 9999,
-        maxWidth: "400px",
-        width: "100%",
-      }}>
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`alert alert-${
-              toast.type === "success" ? "success" :
-              toast.type === "error" ? "danger" :
-              toast.type === "warning" ? "warning" :
-              "info"
-            } alert-dismissible fade show mb-2 shadow-lg`}
-            role="alert"
-            style={{
-              animation: "slideInRight 0.3s ease-out",
-            }}
-          >
-            <div className="d-flex align-items-start">
-              <div className="me-2" style={{ fontSize: "1.2rem" }}>
-                {toast.type === "success" && "✅"}
-                {toast.type === "error" && "❌"}
-                {toast.type === "warning" && "⚠️"}
-                {toast.type === "info" && "ℹ️"}
+      <div
+        style={{
+          position: "fixed",
+          top: "16px",
+          right: "16px",
+          left: "16px",
+          zIndex: 9999,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "8px",
+            maxWidth: "420px",
+            marginLeft: "auto",
+          }}
+        >
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`alert alert-${
+                toast.type === "success"
+                  ? "success"
+                  : toast.type === "error"
+                  ? "danger"
+                  : toast.type === "warning"
+                  ? "warning"
+                  : "info"
+              } alert-dismissible fade show shadow-lg`}
+              role="alert"
+              style={{
+                animation: "slideInRight 0.3s ease-out",
+                pointerEvents: "auto",
+                width: "100%",
+                margin: 0,
+              }}
+            >
+              <div className="d-flex align-items-start">
+                <div className="me-2" style={{ fontSize: "1.25rem", lineHeight: 1 }}>
+                  {toast.type === "success" && "✅"}
+                  {toast.type === "error" && "❌"}
+                  {toast.type === "warning" && "⚠️"}
+                  {toast.type === "info" && "ℹ️"}
+                </div>
+
+                <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                  <strong className="d-block mb-1">
+                    {toast.type === "success" && "Success"}
+                    {toast.type === "error" && "Error"}
+                    {toast.type === "warning" && "Warning"}
+                    {toast.type === "info" && "Info"}
+                  </strong>
+                  <div style={{ fontSize: "0.9rem", wordBreak: "break-word" }}>
+                    {toast.message}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-close ms-2"
+                  aria-label="Close"
+                  onClick={() => removeToast(toast.id)}
+                  style={{ flexShrink: 0 }}
+                />
               </div>
-              <div className="flex-grow-1">
-                <strong className="d-block mb-1">
-                  {toast.type === "success" && "Success"}
-                  {toast.type === "error" && "Error"}
-                  {toast.type === "warning" && "Warning"}
-                  {toast.type === "info" && "Info"}
-                </strong>
-                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
-              </div>
-              <button
-                type="button"
-                className="btn-close"
-                onClick={() => removeToast(toast.id)}
-                aria-label="Close"
-              />
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <style jsx>{`
@@ -110,6 +134,12 @@ export default function ForgotPasswordPage() {
           to {
             transform: translateX(0);
             opacity: 1;
+          }
+        }
+
+        @media (max-width: 576px) {
+          .alert {
+            font-size: 0.875rem;
           }
         }
       `}</style>

@@ -321,53 +321,92 @@ function ProfilePageContent() {
       <div
         style={{
           position: "fixed",
-          top: "20px",
-          right: "20px",
+          top: "16px",
+          right: "16px",
+          left: "16px",
           zIndex: 9999,
-          maxWidth: "400px",
-          width: "100%",
+          pointerEvents: "none",
         }}
       >
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`alert alert-${
-              toast.type === "success" ? "success" : toast.type === "error" ? "danger" : toast.type === "warning" ? "warning" : "info"
-            } alert-dismissible fade show mb-2 shadow-lg`}
-            role="alert"
-            style={{ animation: "slideInRight 0.3s ease-out" }}
-          >
-            <div className="d-flex align-items-start">
-              <div className="me-2" style={{ fontSize: "1.2rem" }}>
-                {toast.type === "success" && "✅"}
-                {toast.type === "error" && "❌"}
-                {toast.type === "warning" && "⚠️"}
-                {toast.type === "info" && "ℹ️"}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "8px",
+            maxWidth: "420px",
+            marginLeft: "auto",
+          }}
+        >
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`alert alert-${
+                toast.type === "success"
+                  ? "success"
+                  : toast.type === "error"
+                  ? "danger"
+                  : toast.type === "warning"
+                  ? "warning"
+                  : "info"
+              } alert-dismissible fade show shadow-lg`}
+              role="alert"
+              style={{
+                animation: "slideInRight 0.3s ease-out",
+                pointerEvents: "auto",
+                width: "100%",
+                margin: 0,
+              }}
+            >
+              <div className="d-flex align-items-start">
+                <div className="me-2" style={{ fontSize: "1.25rem", lineHeight: 1 }}>
+                  {toast.type === "success" && "✅"}
+                  {toast.type === "error" && "❌"}
+                  {toast.type === "warning" && "⚠️"}
+                  {toast.type === "info" && "ℹ️"}
+                </div>
+
+                <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                  <strong className="d-block mb-1">
+                    {toast.type === "success" && "Success"}
+                    {toast.type === "error" && "Error"}
+                    {toast.type === "warning" && "Warning"}
+                    {toast.type === "info" && "Info"}
+                  </strong>
+                  <div style={{ fontSize: "0.9rem", wordBreak: "break-word" }}>
+                    {toast.message}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-close ms-2"
+                  aria-label="Close"
+                  onClick={() => removeToast(toast.id)}
+                  style={{ flexShrink: 0 }}
+                />
               </div>
-              <div className="flex-grow-1">
-                <strong className="d-block mb-1">
-                  {toast.type === "success" && "Success"}
-                  {toast.type === "error" && "Error"}
-                  {toast.type === "warning" && "Warning"}
-                  {toast.type === "info" && "Info"}
-                </strong>
-                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
-              </div>
-              <button
-                type="button"
-                className="btn-close"
-                onClick={() => removeToast(toast.id)}
-                aria-label="Close"
-              />
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <style jsx>{`
         @keyframes slideInRight {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
+        @media (max-width: 576px) {
+          .alert {
+            font-size: 0.875rem;
+          }
         }
       `}</style>
 
@@ -433,28 +472,36 @@ function ProfilePageContent() {
 
                 <div className="mb-3">
                   <h6 className="mb-2 fw-semibold">Verification</h6>
-                  <div className="d-flex align-items-center gap-3 flex-wrap">
+                  <div className="d-flex align-items-center gap-2">
                     {profile.verified ? (
-                      <span className="badge bg-success px-3 py-2" style={{ fontSize: "0.9rem" }}>
+                      <span className="badge bg-success px-3 py-2" style={{ fontSize: "0.7rem" }}>
                         ✔ VERIFIED
                       </span>
                     ) : (
-                      <span className="badge bg-warning text-dark px-3 py-2" style={{ fontSize: "0.9rem" }}>
-                        ⚠ NOT VERIFIED
-                      </span>
-                    )}
-
-                    {!profile.verified && (
-                      <div>
+                      <>
+                        <span 
+                          className="badge bg-warning text-dark" 
+                          style={{ 
+                            fontSize: "0.7rem",
+                            padding: "0.5rem 0.75rem"
+                          }}
+                        >
+                          ⚠ NOT VERIFIED
+                        </span>
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
                           onClick={requestVerificationEmail}
                           disabled={requestLoading}
+                          style={{ 
+                            fontSize: "0.65rem",
+                            padding: "0.35rem 0.65rem",
+                            whiteSpace: "nowrap"
+                          }}
                         >
-                          {requestLoading ? "Sending..." : "Request Verification Email"}
+                          {requestLoading ? "Sending..." : "Request Verification"}
                         </button>
-                      </div>
+                      </>
                     )}
                   </div>
                 </div>
