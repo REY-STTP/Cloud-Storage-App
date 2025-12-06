@@ -33,6 +33,96 @@ function formatSize(bytes?: number | null) {
   return `${value.toFixed(1)} ${units[i]}`;
 }
 
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  danger = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!open) return;
+      if (e.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        className="confirm-backdrop"
+        aria-hidden="true"
+        onClick={onCancel}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.45)",
+          zIndex: 12000,
+        }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        className="confirm-dialog"
+        style={{
+          position: "fixed",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 12001,
+          width: "min(560px, 94%)",
+          background: "white",
+          borderRadius: 12,
+          boxShadow: "0 10px 40px rgba(2,6,23,0.3)",
+          padding: "18px 20px",
+        }}
+      >
+        <h3 id="confirm-title" style={{ margin: 0, fontSize: 18 }}>
+          {title}
+        </h3>
+        {description && <p style={{ marginTop: 8, color: "#374151" }}>{description}</p>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="btn btn-outline-secondary"
+            style={{ minWidth: 96 }}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={danger ? "btn btn-danger" : "btn btn-primary"}
+            style={{ minWidth: 96 }}
+            autoFocus
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function AdminDashboard() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +168,7 @@ export default function AdminDashboard() {
       const res = await fetch(`/api/admin/users?${params.toString()}`, {
         credentials: "same-origin",
       });
-      
+
       if (!res.ok) {
         showToast("error", "Failed to load users");
         setUsers([]);
@@ -154,9 +244,61 @@ export default function AdminDashboard() {
     loadUsers(1, debouncedQuery);
   }, []);
 
-  async function banUser(id: string) {
-    if (!confirm("Are you sure you want to ban this user?")) return;
-    
+
+  function toggleSelectAll() {
+    const selectableUsers = users.filter((u) => u.role === "USER");
+    const selectableIds = selectableUsers.map((u) => u.id);
+
+    const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedUsers.has(id));
+
+    if (allSelected) {
+      setSelectedUsers((prev) => {
+        const next = new Set(prev);
+        selectableIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedUsers((prev) => {
+        const next = new Set(prev);
+        selectableIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }
+
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+    onConfirm?: () => void;
+  }>({ open: false, title: "" });
+
+  function openConfirm(config: {
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+    onConfirm: () => void;
+  }) {
+    setConfirmState({
+      open: true,
+      title: config.title,
+      description: config.description,
+      confirmLabel: config.confirmLabel,
+      cancelLabel: config.cancelLabel,
+      danger: config.danger,
+      onConfirm: () => {
+        setConfirmState((s) => ({ ...s, open: false }));
+        setTimeout(() => config.onConfirm(), 100);
+      },
+    });
+  }
+  
+  async function doBanUser(id: string) {
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: "PATCH",
@@ -164,13 +306,13 @@ export default function AdminDashboard() {
         body: JSON.stringify({ banned: true }),
         credentials: "same-origin",
       });
-      
+
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         showToast("error", data?.message || "Failed to ban user");
         return;
       }
-      
+
       showToast("success", "User banned successfully");
       await loadUsers(page, debouncedQuery);
     } catch (e) {
@@ -179,9 +321,7 @@ export default function AdminDashboard() {
     }
   }
 
-  async function unbanUser(id: string) {
-    if (!confirm("Are you sure you want to unban this user?")) return;
-    
+  async function doUnbanUser(id: string) {
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: "PATCH",
@@ -189,13 +329,13 @@ export default function AdminDashboard() {
         body: JSON.stringify({ banned: false }),
         credentials: "same-origin",
       });
-      
+
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         showToast("error", data?.message || "Failed to unban user");
         return;
       }
-      
+
       showToast("success", "User unbanned successfully");
       await loadUsers(page, debouncedQuery);
     } catch (e) {
@@ -204,15 +344,13 @@ export default function AdminDashboard() {
     }
   }
 
-  async function deleteUser(id: string) {
-    if (!confirm("Are you sure you want to delete this user and all their files?")) return;
-    
+  async function doDeleteUser(id: string) {
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: "DELETE",
         credentials: "same-origin",
       });
-      
+
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         showToast("error", data?.message || "Failed to delete user");
@@ -231,59 +369,18 @@ export default function AdminDashboard() {
     }
   }
 
-  function toggleUserSelection(user: UserItem) {
-    if (user.role === "ADMIN") return;
-
-    setSelectedUsers((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(user.id)) {
-        newSet.delete(user.id);
-      } else {
-        newSet.add(user.id);
-      }
-      return newSet;
-    });
-  }
-
-  function toggleSelectAll() {
-    const selectableUsers = users.filter((u) => u.role === "USER");
-    const selectableIds = selectableUsers.map((u) => u.id);
-    const allSelectableSelected = selectableIds.every((id) => selectedUsers.has(id));
-
-    if (allSelectableSelected && selectableIds.length > 0) {
-      setSelectedUsers((prev) => {
-        const newSet = new Set(prev);
-        selectableIds.forEach((id) => newSet.delete(id));
-        return newSet;
-      });
-    } else {
-      setSelectedUsers((prev) => {
-        const newSet = new Set(prev);
-        selectableIds.forEach((id) => newSet.add(id));
-        return newSet;
-      });
-    }
-  }
-
-  async function handleBatchBan() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to ban");
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to ban ${selectedUsers.size} user(s)?`)) return;
-
+  async function doBatchBan(ids: string[]) {
     setBatchLoading(true);
     try {
       const res = await fetch("/api/admin/users/batch", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selectedUsers), banned: true }),
+        body: JSON.stringify({ ids, banned: true }),
         credentials: "same-origin",
       });
 
       if (res.ok) {
-        showToast("success", `${selectedUsers.size} user(s) banned successfully`);
+        showToast("success", `${ids.length} user(s) banned successfully`);
         setSelectedUsers(new Set());
         await loadUsers(page, debouncedQuery);
       } else {
@@ -298,25 +395,18 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleBatchUnban() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to unban");
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to unban ${selectedUsers.size} user(s)?`)) return;
-
+  async function doBatchUnban(ids: string[]) {
     setBatchLoading(true);
     try {
       const res = await fetch("/api/admin/users/batch", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selectedUsers), banned: false }),
+        body: JSON.stringify({ ids, banned: false }),
         credentials: "same-origin",
       });
 
       if (res.ok) {
-        showToast("success", `${selectedUsers.size} user(s) unbanned successfully`);
+        showToast("success", `${ids.length} user(s) unbanned successfully`);
         setSelectedUsers(new Set());
         await loadUsers(page, debouncedQuery);
       } else {
@@ -331,26 +421,19 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleBatchDelete() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to delete");
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to delete ${selectedUsers.size} user(s) and all their files?`)) return;
-
+  async function doBatchDelete(ids: string[]) {
     setBatchLoading(true);
     try {
       const res = await fetch("/api/admin/users/batch", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selectedUsers) }),
+        body: JSON.stringify({ ids }),
         credentials: "same-origin",
       });
 
       if (res.ok) {
-        showToast("success", `${selectedUsers.size} user(s) deleted successfully`);
-        const totalAfter = Math.max(0, total - selectedUsers.size);
+        showToast("success", `${ids.length} user(s) deleted successfully`);
+        const totalAfter = Math.max(0, total - ids.length);
         const last = Math.max(1, Math.ceil(totalAfter / perPage));
         const nextPage = page > last ? last : page;
         setSelectedUsers(new Set());
@@ -366,6 +449,84 @@ export default function AdminDashboard() {
     } finally {
       setBatchLoading(false);
     }
+  }
+
+  function banUser(id: string) {
+    openConfirm({
+      title: "Ban this user?",
+      description: "Banning will prevent this user from logging in. You can unban later.",
+      confirmLabel: "Ban user",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: async () => doBanUser(id),
+    });
+  }
+
+  function unbanUser(id: string) {
+    openConfirm({
+      title: "Unban this user?",
+      description: "Restore access for this user?",
+      confirmLabel: "Unban user",
+      cancelLabel: "Cancel",
+      danger: false,
+      onConfirm: async () => doUnbanUser(id),
+    });
+  }
+
+  function deleteUser(id: string) {
+    openConfirm({
+      title: "Delete this user?",
+      description: "This will permanently delete the user and all their files. This action cannot be undone.",
+      confirmLabel: "Delete user",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: async () => doDeleteUser(id),
+    });
+  }
+
+  function handleBatchBan() {
+    if (selectedUsers.size === 0) {
+      showToast("warning", "Please select at least one user to ban");
+      return;
+    }
+    openConfirm({
+      title: `Ban ${selectedUsers.size} user(s)?`,
+      description: `This will ban ${selectedUsers.size} selected user(s).`,
+      confirmLabel: "Ban selected",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: async () => doBatchBan(Array.from(selectedUsers)),
+    });
+  }
+
+  function handleBatchUnban() {
+    if (selectedUsers.size === 0) {
+      showToast("warning", "Please select at least one user to unban");
+      return;
+    }
+    openConfirm({
+      title: `Unban ${selectedUsers.size} user(s)?`,
+      description: `This will unban ${selectedUsers.size} selected user(s).`,
+      confirmLabel: "Unban selected",
+      cancelLabel: "Cancel",
+      danger: false,
+      onConfirm: async () => doBatchUnban(Array.from(selectedUsers)),
+    });
+  }
+
+  function handleBatchDelete() {
+    if (selectedUsers.size === 0) {
+      showToast("warning", "Please select at least one user to delete");
+      return;
+    }
+    openConfirm({
+      title: `Delete ${selectedUsers.size} user(s)?`,
+      description: `This will permanently delete ${selectedUsers.size} selected user(s) and their files.`,
+      confirmLabel: "Delete selected",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: async () => doBatchDelete(Array.from(selectedUsers)),
+    });
   }
 
   async function handleLogout() {
@@ -384,14 +545,16 @@ export default function AdminDashboard() {
 
   return (
     <main className="home-landing app-shell">
-      <div style={{
-        position: "fixed",
-        top: "20px",
-        right: "20px",
-        zIndex: 9999,
-        maxWidth: "400px",
-        width: "100%",
-      }}>
+      <div
+        style={{
+          position: "fixed",
+          top: "20px",
+          right: "20px",
+          zIndex: 9999,
+          maxWidth: "400px",
+          width: "100%",
+        }}
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -446,11 +609,21 @@ export default function AdminDashboard() {
         }
       `}</style>
 
+      <ConfirmDialog
+        open={confirmState.open}
+        title={confirmState.title}
+        description={confirmState.description}
+        confirmLabel={confirmState.confirmLabel}
+        cancelLabel={confirmState.cancelLabel}
+        danger={confirmState.danger}
+        onConfirm={() => confirmState.onConfirm && confirmState.onConfirm()}
+        onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
+      />
+
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
         <span className="navbar-brand">Admin Dashboard</span>
-        
+
         <div className="ms-auto d-flex gap-2 align-items-center">
-          
           <div className="input-group me-2 d-none d-md-flex" style={{ minWidth: 220 }}>
             <input
               type="search"
@@ -471,7 +644,7 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          <button 
+          <button
             className="btn btn-outline-light btn-sm d-md-none"
             onClick={() => setShowMobileSearch(!showMobileSearch)}
             title="Search"
@@ -480,7 +653,7 @@ export default function AdminDashboard() {
               <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
             </svg>
           </button>
-          
+
           <button className="btn btn-outline-light btn-sm" onClick={handleLogout}>
             Logout
           </button>
@@ -685,13 +858,21 @@ export default function AdminDashboard() {
                               className="form-check-input"
                               type="checkbox"
                               checked={selectedUsers.has(u.id)}
-                              onChange={() => toggleUserSelection(u)}
+                              onChange={() => {
+                                if (u.role === "ADMIN") return;
+                                setSelectedUsers((prev) => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(u.id)) newSet.delete(u.id);
+                                  else newSet.add(u.id);
+                                  return newSet;
+                                });
+                              }}
                             />
                           ) : (
                             <div style={{ width: "16px" }} />
                           )}
                         </div>
-                        
+
                         <div className="flex-grow-1 position-relative pb-1 pb-md-4">
                           <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2 gap-md-3">
                             <div className="flex-grow-1">
@@ -723,7 +904,7 @@ export default function AdminDashboard() {
                               )}
                             </div>
                           </div>
-                          
+
                           <div className="d-none d-md-block position-absolute start-0 bottom-0 small text-muted">
                             {new Date(u.createdAt).toLocaleDateString("en-US")}
                           </div>

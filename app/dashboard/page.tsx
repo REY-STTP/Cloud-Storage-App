@@ -39,6 +39,96 @@ function formatSize(bytes: number) {
   return `${value.toFixed(1)} ${units[i]}`;
 }
 
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  danger = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!open) return;
+      if (e.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        className="confirm-backdrop"
+        aria-hidden="true"
+        onClick={onCancel}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.45)",
+          zIndex: 11000,
+        }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        className="confirm-dialog"
+        style={{
+          position: "fixed",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 11001,
+          width: "min(560px, 94%)",
+          background: "white",
+          borderRadius: 12,
+          boxShadow: "0 10px 40px rgba(2,6,23,0.3)",
+          padding: "18px 20px",
+        }}
+      >
+        <h3 id="confirm-title" style={{ margin: 0, fontSize: 18 }}>
+          {title}
+        </h3>
+        {description && <p style={{ marginTop: 8, color: "#374151" }}>{description}</p>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="btn btn-outline-secondary"
+            style={{ minWidth: 96 }}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={danger ? "btn btn-danger" : "btn btn-primary"}
+            style={{ minWidth: 96 }}
+            autoFocus
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -64,7 +154,7 @@ export default function DashboardPage() {
   const showToast = (type: Toast["type"], message: string) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
     setToasts((prev) => [...prev, { id, type, message }]);
-    
+
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 5000);
@@ -163,10 +253,10 @@ export default function DashboardPage() {
     setUploading(true);
     try {
       const res = await fetch("/api/files", { method: "POST", body: formData, credentials: "same-origin" });
-      
+
       if (res.ok) {
         const data = await res.json();
-        
+
         const hasErrors = data.some((item: any) => item.error);
         const successCount = data.filter((item: any) => !item.error).length;
         const errorCount = data.filter((item: any) => item.error).length;
@@ -174,7 +264,7 @@ export default function DashboardPage() {
         if (successCount > 0) {
           showToast("success", `${successCount} file(s) uploaded successfully`);
         }
-        
+
         if (errorCount > 0) {
           const errorMessages = data
             .filter((item: any) => item.error)
@@ -186,7 +276,7 @@ export default function DashboardPage() {
         setPage(1);
         await loadFiles(1, debouncedQuery);
         setFilesToUpload([]);
-        
+
         const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
         if (fileInput) fileInput.value = "";
       } else {
@@ -201,41 +291,10 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleRename(id: string) {
-    const filename = newName[id];
-    if (!filename || filename.trim() === "") {
-      showToast("warning", "Filename cannot be empty");
-      return;
-    }
-    
-    try {
-      const res = await fetch(`/api/files/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename }),
-        credentials: "same-origin",
-      });
-      
-      if (res.ok) {
-        showToast("success", "File renamed successfully");
-        await loadFiles(page, debouncedQuery);
-        setNewName((prev) => ({ ...prev, [id]: "" }));
-      } else {
-        const data = await res.json().catch(() => ({}));
-        showToast("error", data.message || "Failed to rename file");
-      }
-    } catch (e) {
-      console.error("rename error", e);
-      showToast("error", "An error occurred while renaming file");
-    }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this file?")) return;
-    
+  async function doDeleteFile(id: string) {
     try {
       const res = await fetch(`/api/files/${id}`, { method: "DELETE", credentials: "same-origin" });
-      
+
       if (res.ok) {
         showToast("success", "File deleted successfully");
         const totalAfter = Math.max(0, total - 1);
@@ -250,6 +309,36 @@ export default function DashboardPage() {
     } catch (e) {
       console.error("delete error", e);
       showToast("error", "An error occurred while deleting file");
+    }
+  }
+
+  async function doBatchDelete(ids: string[]) {
+    setBatchLoading(true);
+    try {
+      const res = await fetch("/api/files/batch", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+        credentials: "same-origin",
+      });
+
+      if (res.ok) {
+        showToast("success", `${ids.length} file(s) deleted successfully`);
+        const totalAfter = Math.max(0, total - ids.length);
+        const last = Math.max(1, Math.ceil(totalAfter / perPage));
+        const nextPage = page > last ? last : page;
+        setSelectedFiles(new Set());
+        setPage(nextPage);
+        await loadFiles(nextPage, debouncedQuery);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast("error", data.message || "Failed to delete files");
+      }
+    } catch (e) {
+      console.error("batch delete error", e);
+      showToast("error", "An error occurred while deleting files");
+    } finally {
+      setBatchLoading(false);
     }
   }
 
@@ -273,40 +362,95 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleBatchDelete() {
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+    onConfirm?: () => void;
+  }>({ open: false, title: "" });
+
+  function openConfirm(config: {
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+    onConfirm: () => void;
+  }) {
+    setConfirmState({
+      open: true,
+      title: config.title,
+      description: config.description,
+      confirmLabel: config.confirmLabel,
+      cancelLabel: config.cancelLabel,
+      danger: config.danger,
+      onConfirm: () => {
+        setConfirmState((s) => ({ ...s, open: false }));
+        setTimeout(() => config.onConfirm(), 100);
+      },
+    });
+  }
+
+  function handleDelete(id: string) {
+    openConfirm({
+      title: "Delete this file?",
+      description: "This action will permanently delete the file. This cannot be undone.",
+      confirmLabel: "Delete file",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: async () => {
+        await doDeleteFile(id);
+      },
+    });
+  }
+
+  function handleBatchDelete() {
     if (selectedFiles.size === 0) {
       showToast("warning", "Please select at least one file to delete");
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete ${selectedFiles.size} file(s)?`)) return;
+    openConfirm({
+      title: `Delete ${selectedFiles.size} file(s)?`,
+      description: `This will permanently delete ${selectedFiles.size} file(s). This action cannot be undone.`,
+      confirmLabel: "Delete selected",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: async () => {
+        await doBatchDelete(Array.from(selectedFiles));
+      },
+    });
+  }
 
-    setBatchLoading(true);
+  async function handleRename(id: string) {
+    const filename = newName[id];
+    if (!filename || filename.trim() === "") {
+      showToast("warning", "Filename cannot be empty");
+      return;
+    }
+
     try {
-      const res = await fetch("/api/files/batch", {
-        method: "DELETE",
+      const res = await fetch(`/api/files/${id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selectedFiles) }),
+        body: JSON.stringify({ filename }),
         credentials: "same-origin",
       });
 
       if (res.ok) {
-        showToast("success", `${selectedFiles.size} file(s) deleted successfully`);
-        const totalAfter = Math.max(0, total - selectedFiles.size);
-        const last = Math.max(1, Math.ceil(totalAfter / perPage));
-        const nextPage = page > last ? last : page;
-        setSelectedFiles(new Set());
-        setPage(nextPage);
-        await loadFiles(nextPage, debouncedQuery);
+        showToast("success", "File renamed successfully");
+        await loadFiles(page, debouncedQuery);
+        setNewName((prev) => ({ ...prev, [id]: "" }));
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast("error", data.message || "Failed to delete files");
+        showToast("error", data.message || "Failed to rename file");
       }
     } catch (e) {
-      console.error("batch delete error", e);
-      showToast("error", "An error occurred while deleting files");
-    } finally {
-      setBatchLoading(false);
+      console.error("rename error", e);
+      showToast("error", "An error occurred while renaming file");
     }
   }
 
@@ -318,7 +462,7 @@ export default function DashboardPage() {
 
     setBatchLoading(true);
     showToast("info", "Processing download...");
-    
+
     try {
       const res = await fetch("/api/files/batch/download", {
         method: "POST",
@@ -337,7 +481,7 @@ export default function DashboardPage() {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
+
         showToast("success", `${selectedFiles.size} file(s) downloaded successfully`);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -365,22 +509,21 @@ export default function DashboardPage() {
 
   return (
     <main className="home-landing app-shell">
-      <div style={{
-        position: "fixed",
-        top: "20px",
-        right: "20px",
-        zIndex: 9999,
-        maxWidth: "400px",
-        width: "100%",
-      }}>
+      <div
+        style={{
+          position: "fixed",
+          top: "20px",
+          right: "20px",
+          zIndex: 9999,
+          maxWidth: "400px",
+          width: "100%",
+        }}
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={`alert alert-${
-              toast.type === "success" ? "success" :
-              toast.type === "error" ? "danger" :
-              toast.type === "warning" ? "warning" :
-              "info"
+              toast.type === "success" ? "success" : toast.type === "error" ? "danger" : toast.type === "warning" ? "warning" : "info"
             } alert-dismissible fade show mb-2 shadow-lg`}
             role="alert"
             style={{
@@ -427,11 +570,21 @@ export default function DashboardPage() {
         }
       `}</style>
 
+      <ConfirmDialog
+        open={confirmState.open}
+        title={confirmState.title}
+        description={confirmState.description}
+        confirmLabel={confirmState.confirmLabel}
+        cancelLabel={confirmState.cancelLabel}
+        danger={confirmState.danger}
+        onConfirm={() => confirmState.onConfirm && confirmState.onConfirm()}
+        onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
+      />
+
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
         <span className="navbar-brand">{user ? `Welcome, ${user.name}` : "Loading..."}</span>
 
         <div className="ms-auto d-flex gap-2 align-items-center">
-          
           <div className="input-group me-2 d-none d-md-flex" style={{ minWidth: 220 }}>
             <input
               type="search"
@@ -452,13 +605,13 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <button 
+          <button
             className="btn btn-outline-light btn-sm d-md-none"
             onClick={() => setShowMobileSearch(!showMobileSearch)}
             title="Search"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+              <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
             </svg>
           </button>
 
@@ -493,11 +646,7 @@ export default function DashboardPage() {
                 ×
               </button>
             )}
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-light"
-              onClick={() => setShowMobileSearch(false)}
-            >
+            <button type="button" className="btn btn-sm btn-outline-light" onClick={() => setShowMobileSearch(false)}>
               Close
             </button>
           </div>
@@ -586,18 +735,10 @@ export default function DashboardPage() {
                           Clear all
                         </button>
                         <div className="d-flex gap-2 ms-auto">
-                          <button
-                            className="btn btn-sm btn-success"
-                            onClick={handleBatchDownload}
-                            disabled={batchLoading}
-                          >
+                          <button className="btn btn-sm btn-success" onClick={handleBatchDownload} disabled={batchLoading}>
                             {batchLoading ? "Processing..." : "📥 Download Selected"}
                           </button>
-                          <button
-                            className="btn btn-sm btn-danger"
-                            onClick={handleBatchDelete}
-                            disabled={batchLoading}
-                          >
+                          <button className="btn btn-sm btn-danger" onClick={handleBatchDelete} disabled={batchLoading}>
                             {batchLoading ? "Processing..." : "🗑️ Delete Selected"}
                           </button>
                         </div>
@@ -619,7 +760,6 @@ export default function DashboardPage() {
                     {files.map((f) => (
                       <div key={f.id} className="user-file-row mb-3 p-3 rounded-2 border border-slate-200/60">
                         <div className="d-flex gap-3">
-                          
                           <div className="d-flex align-items-start pt-1">
                             <input
                               className="form-check-input"
