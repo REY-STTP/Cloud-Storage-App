@@ -1,7 +1,14 @@
+// app/login/page.tsx
 "use client";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+
+interface Toast {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  message: string;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +17,18 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = (type: Toast["type"], message: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 5000);
+  };
+
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -23,17 +42,24 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.message || "Login failed");
+        const msg = data.message || "Login failed";
+        setError(msg);
+        showToast("error", msg);
       } else {
-        const data = await res.json();
-        if (data.role === "ADMIN") router.push("/admin");
-        else router.push("/dashboard");
+        showToast("success", "Login successful. Redirecting...");
+        setTimeout(() => {
+          if (data.role === "ADMIN") router.push("/admin");
+          else router.push("/dashboard");
+        }, 900);
       }
     } catch (e) {
       console.error(e);
-      setError("An error occurred");
+      const msg = "An error occurred";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setLoading(false);
     }
@@ -41,6 +67,73 @@ export default function LoginPage() {
 
   return (
     <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
+      <div
+        style={{
+          position: "fixed",
+          top: "20px",
+          right: "20px",
+          zIndex: 9999,
+          maxWidth: "400px",
+          width: "100%",
+        }}
+      >
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`alert alert-${
+              toast.type === "success"
+                ? "success"
+                : toast.type === "error"
+                ? "danger"
+                : toast.type === "warning"
+                ? "warning"
+                : "info"
+            } alert-dismissible fade show mb-2 shadow-lg`}
+            role="alert"
+            style={{ animation: "slideInRight 0.3s ease-out" }}
+          >
+            <div className="d-flex align-items-start">
+              <div className="me-2" style={{ fontSize: "1.2rem" }}>
+                {toast.type === "success" && "✅"}
+                {toast.type === "error" && "❌"}
+                {toast.type === "warning" && "⚠️"}
+                {toast.type === "info" && "ℹ️"}
+              </div>
+
+              <div className="flex-grow-1">
+                <strong className="d-block mb-1">
+                  {toast.type === "success" && "Success"}
+                  {toast.type === "error" && "Error"}
+                  {toast.type === "warning" && "Warning"}
+                  {toast.type === "info" && "Info"}
+                </strong>
+                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
+              </div>
+
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={() => removeToast(toast.id)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+
       <div className="max-w-5xl w-full grid gap-10 md:grid-cols-2 items-center">
         <section className="d-none d-md-block">
           <div className="mb-3">
@@ -48,9 +141,7 @@ export default function LoginPage() {
               Welcome back 👋
             </span>
           </div>
-          <h1 className="fw-bold fs-3 mb-2">
-            Sign in and manage your cloud files
-          </h1>
+          <h1 className="fw-bold fs-3 mb-2">Sign in and manage your cloud files</h1>
           <p className="text-muted small mb-3">
             Use your account to upload, rename, download, and delete files
             from your personal dashboard. Admins can also manage users and
@@ -80,15 +171,11 @@ export default function LoginPage() {
                 <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs mb-2 font-medium uppercase tracking-[0.15em] shadow-sm">
                   Cloud Storage App
                 </span>
-                <h2 className="card-title mb-1 text-center fw-bold">
-                  Login
-                </h2>
+                <h2 className="card-title mb-1 text-center fw-bold">Login</h2>
                 <p className="text-muted small mb-0 text-center">
                   Enter your email and password to continue.
                 </p>
               </div>
-
-              {error && <div className="alert alert-danger">{error}</div>}
 
               <form onSubmit={handleSubmit}>
                 <div className="mb-3">

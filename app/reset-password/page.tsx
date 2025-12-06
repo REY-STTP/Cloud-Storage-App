@@ -4,6 +4,12 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
+interface Toast {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  message: string;
+}
+
 export default function ResetPasswordPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -17,8 +23,15 @@ export default function ResetPasswordPage() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = (type: Toast["type"], message: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  };
+
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   useEffect(() => {
     setToken(tokenFromQuery);
@@ -26,21 +39,19 @@ export default function ResetPasswordPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setMessage(null);
-    setError(null);
 
     if (!token) {
-      setError("Invalid reset link. Token missing.");
+      showToast("error", "Invalid reset link. Token missing");
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      showToast("warning", "Password must be at least 6 characters");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      showToast("error", "Passwords do not match");
       return;
     }
 
@@ -55,14 +66,14 @@ export default function ResetPasswordPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(data.message || "Failed to reset password");
+        showToast("error", data.message || "Failed to reset password");
       } else {
-        setMessage(data.message || "Password reset successful. Redirecting to login...");
+        showToast("success", "Password reset successful. Redirecting to login...");
         setTimeout(() => router.push("/login"), 2000);
       }
     } catch (err) {
       console.error("reset error", err);
-      setError("An error occurred while resetting password.");
+      showToast("error", "An error occurred while resetting password");
     } finally {
       setLoading(false);
     }
@@ -70,6 +81,68 @@ export default function ResetPasswordPage() {
 
   return (
     <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
+      <div style={{
+        position: "fixed",
+        top: "20px",
+        right: "20px",
+        zIndex: 9999,
+        maxWidth: "400px",
+        width: "100%",
+      }}>
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`alert alert-${
+              toast.type === "success" ? "success" :
+              toast.type === "error" ? "danger" :
+              toast.type === "warning" ? "warning" :
+              "info"
+            } alert-dismissible fade show mb-2 shadow-lg`}
+            role="alert"
+            style={{
+              animation: "slideInRight 0.3s ease-out",
+            }}
+          >
+            <div className="d-flex align-items-start">
+              <div className="me-2" style={{ fontSize: "1.2rem" }}>
+                {toast.type === "success" && "✅"}
+                {toast.type === "error" && "❌"}
+                {toast.type === "warning" && "⚠️"}
+                {toast.type === "info" && "ℹ️"}
+              </div>
+              <div className="flex-grow-1">
+                <strong className="d-block mb-1">
+                  {toast.type === "success" && "Success"}
+                  {toast.type === "error" && "Error"}
+                  {toast.type === "warning" && "Warning"}
+                  {toast.type === "info" && "Info"}
+                </strong>
+                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
+              </div>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => removeToast(toast.id)}
+                aria-label="Close"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+
       <div className="max-w-5xl w-full grid gap-10 md:grid-cols-2 items-center">
         <section className="d-none d-md-block">
           <div className="mb-3">
@@ -102,9 +175,6 @@ export default function ResetPasswordPage() {
                 <h2 className="card-title mb-1 text-center fw-bold">Create a new password</h2>
                 <p className="text-muted small mb-0 text-center">Enter your new password below.</p>
               </div>
-
-              {error && <div className="alert alert-danger">{error}</div>}
-              {message && <div className="alert alert-success">{message}</div>}
 
               <form onSubmit={handleSubmit}>
                 <div className="mb-3">

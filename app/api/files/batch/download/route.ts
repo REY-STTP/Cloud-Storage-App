@@ -4,9 +4,10 @@ import { connectDB } from "@/lib/db";
 import { File as FileModel } from "@/models/File";
 import { verifyJwt } from "@/lib/auth";
 import archiver from "archiver";
-import { Readable } from "stream";
+import axios from "axios";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const token = req.cookies.get("token")?.value;
@@ -36,44 +37,79 @@ export async function POST(req: NextRequest) {
     }
 
     if (files.length === 1) {
-      const file = files[0];
-      const fs = await import("fs/promises");
+      const file = files[0] as any;
+      const filename = file.originalName || file.filename || "";
       
+      if (file.url && !filename.toLowerCase().endsWith('.zip')) {
+        return NextResponse.redirect(file.url);
+      }
+    }
+
+    const archive = archiver("zip", { 
+      zlib: { level: 9 },
+      store: true
+    });
+
+    const chunks: Buffer[] = [];
+
+    archive.on("data", (chunk) => {
+      chunks.push(chunk);
+    });
+
+    let archiveFinalized = false;
+    const finalizePromise = new Promise<void>((resolve, reject) => {
+      archive.on("end", () => {
+        archiveFinalized = true;
+        resolve();
+      });
+      archive.on("error", reject);
+    });
+
+    for (const f of files) {
+      const url = (f as any).url;
+      const filename = (f as any).originalName || (f as any).filename || `file-${f._id}`;
+      
+      if (!url) {
+        console.warn(`File ${f._id} has no url, skipping`);
+        continue;
+      }
+
       try {
-        const buffer = await fs.readFile(file.path);
-        return new NextResponse(buffer, {
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Disposition": `attachment; filename="${encodeURIComponent(file.filename)}"`,
-          },
+        const res = await axios.get(url, { 
+          responseType: "stream", 
+          timeout: 30000,
+          maxRedirects: 5
         });
+        
+        archive.append(res.data, { name: filename });
       } catch (err) {
-        return NextResponse.json({ message: "File not found" }, { status: 404 });
+        console.warn(`Failed to fetch ${url} for ${filename}:`, err);
+        archive.append(`Failed to fetch ${filename}\n`, { 
+          name: `ERROR-${filename}.txt` 
+        });
       }
     }
 
-    const archive = archiver("zip", { zlib: { level: 9 } });
+    await archive.finalize();
     
-    for (const file of files) {
-      try {
-        archive.file(file.path, { name: file.filename });
-      } catch (err) {
-        console.warn(`Failed to add file ${file.filename} to archive:`, err);
-      }
-    }
+    await finalizePromise;
 
-    archive.finalize();
+    const buffer = Buffer.concat(chunks);
 
-    const stream = Readable.toWeb(archive as any);
-    
-    return new NextResponse(stream as any, {
+    return new NextResponse(buffer, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="files-${Date.now()}.zip"`,
+        "Content-Length": buffer.length.toString(),
+        "Cache-Control": "no-cache",
       },
     });
+
   } catch (error) {
     console.error("Batch download error:", error);
-    return NextResponse.json({ message: "Batch download failed" }, { status: 500 });
+    return NextResponse.json({ 
+      message: "Batch download failed",
+      error: error instanceof Error ? error.message : "Unknown error"
+    }, { status: 500 });
   }
 }

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
-import { File } from "@/models/File";
+import { File as FileModel } from "@/models/File";
 import { verifyJwt } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
             { $limit: perPage },
             {
               $lookup: {
-                from: File.collection.name,
+                from: FileModel.collection.name,
                 let: { userId: "$_id" },
                 pipeline: [
                   { $match: { $expr: { $eq: ["$owner", "$$userId"] } } },

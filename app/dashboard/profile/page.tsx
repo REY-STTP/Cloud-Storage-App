@@ -13,6 +13,12 @@ interface Profile {
   createdAt: string;
 }
 
+interface Toast {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  message: string;
+}
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
@@ -26,32 +32,25 @@ export default function ProfilePage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
   const [requestLoading, setRequestLoading] = useState(false);
 
-  const [toast, setToast] = useState<{
-    show: boolean;
-    msg: string;
-    variant: "success" | "error" | "info";
-  }>({ show: false, msg: "", variant: "info" });
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-  function showToastMessage(msg: string, variant: "success" | "error" | "info" = "info", timeout = 3500) {
-    setToast({ show: true, msg, variant });
-    window.setTimeout(() => setToast((t) => ({ ...t, show: false })), timeout);
-  }
+  const showToast = (type: Toast["type"], message: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  };
+
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   async function loadProfile() {
     setLoading(true);
-    setLoadError(null);
     try {
       const res = await fetch("/api/user/profile");
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setLoadError(data?.message || "Failed to load profile");
+        showToast("error", data?.message || "Failed to load profile");
       } else {
         const data: Profile = await res.json();
         setProfile(data);
@@ -59,7 +58,7 @@ export default function ProfilePage() {
       }
     } catch (e) {
       console.error(e);
-      setLoadError("Server error");
+      showToast("error", "Server error while loading profile");
     } finally {
       setLoading(false);
     }
@@ -74,14 +73,12 @@ export default function ProfilePage() {
   useEffect(() => {
     const v = params?.get("verified");
     if (v === "1") {
+      showToast("success", "Email verified successfully!");
       loadProfile();
     }
   }, [params]);
 
   async function handleDeleteAccount() {
-    setSubmitError(null);
-    setSuccess(null);
-
     const ok = confirm(
       "Are you sure you want to delete your account? All your files will be permanently deleted."
     );
@@ -95,29 +92,33 @@ export default function ProfilePage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setSubmitError(data?.message || "Failed to delete account");
+        showToast("error", data?.message || "Failed to delete account");
       } else {
-        alert("Your account has been deleted.");
-        window.location.href = "/register";
+        showToast("success", "Your account has been deleted");
+        setTimeout(() => {
+          window.location.href = "/register";
+        }, 2000);
       }
     } catch (e) {
       console.error(e);
-      setSubmitError("Server error when deleting account.");
+      showToast("error", "Server error when deleting account");
     }
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setSubmitError(null);
-    setSuccess(null);
 
     if (newPassword || confirmNewPassword) {
       if (newPassword !== confirmNewPassword) {
-        setSubmitError("New password and confirmation do not match.");
+        showToast("error", "New password and confirmation do not match");
         return;
       }
       if (!currentPassword) {
-        setSubmitError("Current password is required to change password.");
+        showToast("warning", "Current password is required to change password");
+        return;
+      }
+      if (newPassword.length < 6) {
+        showToast("warning", "New password must be at least 6 characters");
         return;
       }
     }
@@ -137,9 +138,9 @@ export default function ProfilePage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setSubmitError(data?.message || "Failed to update profile");
+        showToast("error", data?.message || "Failed to update profile");
       } else {
-        setSuccess("Profile has been updated successfully.");
+        showToast("success", "Profile updated successfully");
         if (data?.name) {
           setProfile((prev) => (prev ? { ...prev, name: data.name } : prev));
         }
@@ -149,15 +150,10 @@ export default function ProfilePage() {
       }
     } catch (e) {
       console.error(e);
-      setSubmitError("Server error");
+      showToast("error", "Server error while updating profile");
     } finally {
       setSaving(false);
     }
-  }
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/login";
   }
 
   async function requestVerificationEmail() {
@@ -174,64 +170,85 @@ export default function ProfilePage() {
       const data = await res.json().catch(() => null);
 
       if (res.ok) {
-        showToastMessage(data?.message || "Verification email sent. Check your inbox.", "success");
+        showToast("success", data?.message || "Verification email sent. Check your inbox");
       } else {
-        showToastMessage(data?.message || "Failed to send verification email.", "error");
+        showToast("error", data?.message || "Failed to send verification email");
       }
     } catch (e) {
       console.error("requestVerificationEmail error", e);
-      showToastMessage("Server error when sending verification email.", "error");
+      showToast("error", "Server error when sending verification email");
     } finally {
       setRequestLoading(false);
     }
   }
 
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    window.location.href = "/login";
+  }
+
   return (
     <main className="home-landing app-shell">
-      <div
-        aria-live="polite"
-        aria-atomic="true"
-        style={{ position: "fixed", top: 16, right: 16, zIndex: 1060 }}
-      >
-        <div
-          style={{
-            display: toast.show ? "flex" : "none",
-            minWidth: 280,
-            maxWidth: 420,
-            background:
-              toast.variant === "success" ? "#e9f7ef" : toast.variant === "error" ? "#fff0f0" : "#eef4ff",
-            borderLeft:
-              toast.variant === "success" ? "4px solid #28a745" : toast.variant === "error" ? "4px solid #dc3545" : "4px solid #0d6efd",
-            color: "#0f1724",
-            padding: "12px 12px",
-            borderRadius: 8,
-            boxShadow: "0 6px 18px rgba(2,6,23,0.4)",
-            alignItems: "center",
-            gap: 12,
-            animation: toast.show ? "toastIn .18s ease-out" : "toastOut .12s ease-in",
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
-              {toast.variant === "success" ? "Success" : toast.variant === "error" ? "Error" : "Info"}
-            </div>
-            <div style={{ fontSize: 13, lineHeight: 1.25 }}>{toast.msg}</div>
-          </div>
-
-          <button
-            className="btn btn-sm btn-light"
-            onClick={() => setToast((t) => ({ ...t, show: false }))}
-            aria-label="close toast"
-            style={{ height: 34 }}
+      <div style={{
+        position: "fixed",
+        top: "20px",
+        right: "20px",
+        zIndex: 9999,
+        maxWidth: "400px",
+        width: "100%",
+      }}>
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`alert alert-${
+              toast.type === "success" ? "success" :
+              toast.type === "error" ? "danger" :
+              toast.type === "warning" ? "warning" :
+              "info"
+            } alert-dismissible fade show mb-2 shadow-lg`}
+            role="alert"
+            style={{
+              animation: "slideInRight 0.3s ease-out",
+            }}
           >
-            ×
-          </button>
-        </div>
+            <div className="d-flex align-items-start">
+              <div className="me-2" style={{ fontSize: "1.2rem" }}>
+                {toast.type === "success" && "✅"}
+                {toast.type === "error" && "❌"}
+                {toast.type === "warning" && "⚠️"}
+                {toast.type === "info" && "ℹ️"}
+              </div>
+              <div className="flex-grow-1">
+                <strong className="d-block mb-1">
+                  {toast.type === "success" && "Success"}
+                  {toast.type === "error" && "Error"}
+                  {toast.type === "warning" && "Warning"}
+                  {toast.type === "info" && "Info"}
+                </strong>
+                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
+              </div>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => removeToast(toast.id)}
+                aria-label="Close"
+              />
+            </div>
+          </div>
+        ))}
       </div>
 
-      <style>{`
-        @keyframes toastIn { from { transform: translateY(-6px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
-        @keyframes toastOut { from { transform: translateY(0); opacity: 1 } to { transform: translateY(-6px); opacity: 0 } }
+      <style jsx>{`
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
       `}</style>
 
       <nav className="navbar navbar-expand-lg px-4 navbar-dark bg-dark">
@@ -258,9 +275,11 @@ export default function ProfilePage() {
         </div>
 
         {loading ? (
-          <p>Loading...</p>
-        ) : loadError ? (
-          <div className="alert alert-danger">{loadError}</div>
+          <div className="text-center py-5">
+            <div className="spinner-border text-primary" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+          </div>
         ) : !profile ? (
           <div className="alert alert-danger">Profile not found.</div>
         ) : (
@@ -277,7 +296,7 @@ export default function ProfilePage() {
                     Role : <strong>{profile.role}</strong>
                   </p>
                   <p className="text-muted small mb-0">
-                    Joined: {new Date(profile.createdAt).toLocaleString("id-ID")}
+                    Joined: {new Date(profile.createdAt).toLocaleString("en-US")}
                   </p>
                 </div>
 
@@ -328,9 +347,6 @@ export default function ProfilePage() {
 
             <div className="col-md-8">
               <div className="landing-card shadow-lg border-0 p-4">
-                {submitError && <div className="alert alert-danger">{submitError}</div>}
-                {success && <div className="alert alert-success">{success}</div>}
-
                 <h5 className="mb-3 fw-bold">Edit profile</h5>
 
                 <form onSubmit={handleSubmit}>

@@ -15,8 +15,16 @@ interface UserProfile {
 interface FileItem {
   id: string;
   filename: string;
+  url?: string;
+  mimeType?: string;
   size: number;
   createdAt: string;
+}
+
+interface Toast {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  message: string;
 }
 
 function formatSize(bytes: number) {
@@ -37,7 +45,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
   const [newName, setNewName] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
 
   const [page, setPage] = useState<number>(1);
   const perPage = 10;
@@ -48,8 +55,24 @@ export default function DashboardPage() {
 
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const [showMobileSearch, setShowMobileSearch] = useState(false);
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = (type: Toast["type"], message: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 5000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), 400);
@@ -58,7 +81,7 @@ export default function DashboardPage() {
 
   async function loadProfile() {
     try {
-      const res = await fetch("/api/user/profile");
+      const res = await fetch("/api/user/profile", { credentials: "same-origin" });
       if (res.ok) {
         const data = await res.json();
         setUser(data);
@@ -70,16 +93,15 @@ export default function DashboardPage() {
 
   async function loadFiles(p = page, q = debouncedQuery) {
     setLoading(true);
-    setError(null);
     try {
       const qp = new URLSearchParams();
       qp.set("page", String(p));
       qp.set("limit", String(perPage));
       if (q) qp.set("q", q);
 
-      const res = await fetch(`/api/files?${qp.toString()}`);
+      const res = await fetch(`/api/files?${qp.toString()}`, { credentials: "same-origin" });
       if (!res.ok) {
-        setError("Load file failed");
+        showToast("error", "Failed to load file list");
         setFiles([]);
         setTotal(0);
       } else {
@@ -103,7 +125,7 @@ export default function DashboardPage() {
       }
     } catch (e) {
       console.error("loadFiles error", e);
-      setError("Load file failed");
+      showToast("error", "An error occurred while loading files");
       setFiles([]);
       setTotal(0);
       setPage(1);
@@ -129,35 +151,63 @@ export default function DashboardPage() {
 
   async function handleUpload(e: FormEvent) {
     e.preventDefault();
-    setError(null);
 
     if (!filesToUpload || filesToUpload.length === 0) {
-      setError("Select at least one file.");
+      showToast("warning", "Please select at least one file to upload");
       return;
     }
 
     const formData = new FormData();
     for (const f of filesToUpload) formData.append("files", f);
 
+    setUploading(true);
     try {
-      const res = await fetch("/api/files", { method: "POST", body: formData });
+      const res = await fetch("/api/files", { method: "POST", body: formData, credentials: "same-origin" });
+      
       if (res.ok) {
+        const data = await res.json();
+        
+        const hasErrors = data.some((item: any) => item.error);
+        const successCount = data.filter((item: any) => !item.error).length;
+        const errorCount = data.filter((item: any) => item.error).length;
+
+        if (successCount > 0) {
+          showToast("success", `${successCount} file(s) uploaded successfully`);
+        }
+        
+        if (errorCount > 0) {
+          const errorMessages = data
+            .filter((item: any) => item.error)
+            .map((item: any) => `${item.filename}: ${item.error}`)
+            .join("; ");
+          showToast("error", `${errorCount} file(s) failed: ${errorMessages}`);
+        }
+
         setPage(1);
         await loadFiles(1, debouncedQuery);
         setFilesToUpload([]);
+        
+        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+        if (fileInput) fileInput.value = "";
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.message || "Upload failed");
+        showToast("error", data.message || "Upload failed");
       }
     } catch (e) {
       console.error("upload error", e);
-      setError("Upload failed");
+      showToast("error", "An error occurred while uploading files");
+    } finally {
+      setUploading(false);
     }
   }
 
   async function handleRename(id: string) {
     const filename = newName[id];
-    if (!filename || filename.trim() === "") return;
+    if (!filename || filename.trim() === "") {
+      showToast("warning", "Filename cannot be empty");
+      return;
+    }
+    
     try {
       const res = await fetch(`/api/files/${id}`, {
         method: "PATCH",
@@ -165,32 +215,41 @@ export default function DashboardPage() {
         body: JSON.stringify({ filename }),
         credentials: "same-origin",
       });
+      
       if (res.ok) {
+        showToast("success", "File renamed successfully");
         await loadFiles(page, debouncedQuery);
         setNewName((prev) => ({ ...prev, [id]: "" }));
       } else {
-        console.warn("Rename failed", await res.text());
+        const data = await res.json().catch(() => ({}));
+        showToast("error", data.message || "Failed to rename file");
       }
     } catch (e) {
       console.error("rename error", e);
+      showToast("error", "An error occurred while renaming file");
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure?")) return;
+    if (!confirm("Are you sure you want to delete this file?")) return;
+    
     try {
       const res = await fetch(`/api/files/${id}`, { method: "DELETE", credentials: "same-origin" });
+      
       if (res.ok) {
+        showToast("success", "File deleted successfully");
         const totalAfter = Math.max(0, total - 1);
-        const lastPage = Math.max(1, Math.ceil(totalAfter / perPage));
-        const nextPage = page > lastPage ? lastPage : page;
+        const last = Math.max(1, Math.ceil(totalAfter / perPage));
+        const nextPage = page > last ? last : page;
         setPage(nextPage);
         await loadFiles(nextPage, debouncedQuery);
       } else {
-        console.warn("Delete failed", await res.text());
+        const data = await res.json().catch(() => ({}));
+        showToast("error", data.message || "Failed to delete file");
       }
     } catch (e) {
       console.error("delete error", e);
+      showToast("error", "An error occurred while deleting file");
     }
   }
 
@@ -216,7 +275,7 @@ export default function DashboardPage() {
 
   async function handleBatchDelete() {
     if (selectedFiles.size === 0) {
-      alert("Please select at least one file to delete.");
+      showToast("warning", "Please select at least one file to delete");
       return;
     }
 
@@ -232,19 +291,20 @@ export default function DashboardPage() {
       });
 
       if (res.ok) {
+        showToast("success", `${selectedFiles.size} file(s) deleted successfully`);
         const totalAfter = Math.max(0, total - selectedFiles.size);
-        const lastPage = Math.max(1, Math.ceil(totalAfter / perPage));
-        const nextPage = page > lastPage ? lastPage : page;
+        const last = Math.max(1, Math.ceil(totalAfter / perPage));
+        const nextPage = page > last ? last : page;
         setSelectedFiles(new Set());
         setPage(nextPage);
         await loadFiles(nextPage, debouncedQuery);
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || "Batch delete failed");
+        showToast("error", data.message || "Failed to delete files");
       }
     } catch (e) {
       console.error("batch delete error", e);
-      alert("Batch delete failed");
+      showToast("error", "An error occurred while deleting files");
     } finally {
       setBatchLoading(false);
     }
@@ -252,11 +312,13 @@ export default function DashboardPage() {
 
   async function handleBatchDownload() {
     if (selectedFiles.size === 0) {
-      alert("Please select at least one file to download.");
+      showToast("warning", "Please select at least one file to download");
       return;
     }
 
     setBatchLoading(true);
+    showToast("info", "Processing download...");
+    
     try {
       const res = await fetch("/api/files/batch/download", {
         method: "POST",
@@ -275,20 +337,22 @@ export default function DashboardPage() {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+        
+        showToast("success", `${selectedFiles.size} file(s) downloaded successfully`);
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || "Batch download failed");
+        showToast("error", data.message || "Failed to download files");
       }
     } catch (e) {
       console.error("batch download error", e);
-      alert("Batch download failed");
+      showToast("error", "An error occurred while downloading files");
     } finally {
       setBatchLoading(false);
     }
   }
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     window.location.href = "/login";
   }
 
@@ -301,6 +365,68 @@ export default function DashboardPage() {
 
   return (
     <main className="home-landing app-shell">
+      <div style={{
+        position: "fixed",
+        top: "20px",
+        right: "20px",
+        zIndex: 9999,
+        maxWidth: "400px",
+        width: "100%",
+      }}>
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`alert alert-${
+              toast.type === "success" ? "success" :
+              toast.type === "error" ? "danger" :
+              toast.type === "warning" ? "warning" :
+              "info"
+            } alert-dismissible fade show mb-2 shadow-lg`}
+            role="alert"
+            style={{
+              animation: "slideInRight 0.3s ease-out",
+            }}
+          >
+            <div className="d-flex align-items-start">
+              <div className="me-2" style={{ fontSize: "1.2rem" }}>
+                {toast.type === "success" && "✅"}
+                {toast.type === "error" && "❌"}
+                {toast.type === "warning" && "⚠️"}
+                {toast.type === "info" && "ℹ️"}
+              </div>
+              <div className="flex-grow-1">
+                <strong className="d-block mb-1">
+                  {toast.type === "success" && "Success"}
+                  {toast.type === "error" && "Error"}
+                  {toast.type === "warning" && "Warning"}
+                  {toast.type === "info" && "Info"}
+                </strong>
+                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
+              </div>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => removeToast(toast.id)}
+                aria-label="Close"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
         <span className="navbar-brand">{user ? `Welcome, ${user.name}` : "Loading..."}</span>
 
@@ -394,8 +520,6 @@ export default function DashboardPage() {
             <div className="landing-card shadow-lg border-0 p-4">
               <h5 className="card-title mb-3 fw-bold">Upload file</h5>
 
-              {error && <div className="alert alert-danger">{error}</div>}
-
               <form onSubmit={handleUpload}>
                 <input
                   type="file"
@@ -413,8 +537,8 @@ export default function DashboardPage() {
 
                 {filesToUpload.length > 0 && <p className="small text-muted mb-2">{filesToUpload.length} file selected</p>}
 
-                <button className="btn btn-primary w-100" type="submit">
-                  Upload
+                <button className="btn btn-primary w-100" type="submit" disabled={uploading}>
+                  {uploading ? "Uploading..." : "Upload"}
                 </button>
               </form>
             </div>

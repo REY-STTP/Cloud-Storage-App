@@ -15,6 +15,12 @@ interface UserItem {
   totalSizeBytes?: number | null;
 }
 
+interface Toast {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  message: string;
+}
+
 function formatSize(bytes?: number | null) {
   if (bytes === null || bytes === undefined || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -30,13 +36,12 @@ function formatSize(bytes?: number | null) {
 export default function AdminDashboard() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [page, setPage] = useState<number>(1);
   const perPage = 10;
   const [total, setTotal] = useState<number>(0);
   const [admins, setAdmins] = useState<number>(0);
-  const [verified, setVerified] = useState<number>(0); // NEW: count verified users
+  const [verified, setVerified] = useState<number>(0);
   const [banned, setBanned] = useState<number>(0);
 
   const [query, setQuery] = useState<string>("");
@@ -44,8 +49,17 @@ export default function AdminDashboard() {
 
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
-
   const [showMobileSearch, setShowMobileSearch] = useState(false);
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = (type: Toast["type"], message: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  };
+
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 400);
@@ -54,7 +68,6 @@ export default function AdminDashboard() {
 
   async function loadUsers(p = page, q = debouncedQuery) {
     setLoading(true);
-    setError(null);
 
     try {
       const params = new URLSearchParams();
@@ -62,9 +75,12 @@ export default function AdminDashboard() {
       params.set("limit", String(perPage));
       if (q) params.set("q", q);
 
-      const res = await fetch(`/api/admin/users?${params.toString()}`);
+      const res = await fetch(`/api/admin/users?${params.toString()}`, {
+        credentials: "same-origin",
+      });
+      
       if (!res.ok) {
-        setError("Failed to load users");
+        showToast("error", "Failed to load users");
         setUsers([]);
         setTotal(0);
         setAdmins(0);
@@ -82,7 +98,6 @@ export default function AdminDashboard() {
         setUsers(data.users);
         setTotal(typeof data.total === "number" ? data.total : data.users.length);
         setAdmins(typeof data.admins === "number" ? data.admins : data.users.filter((u: any) => u.role === "ADMIN").length);
-        // try to use server-provided verified/banned counts if present, otherwise compute
         setVerified(typeof data.verified === "number" ? data.verified : data.users.filter((u: any) => u.verified).length);
         setBanned(typeof data.banned === "number" ? data.banned : data.users.filter((u: any) => u.banned).length);
         setPage(typeof data.page === "number" ? data.page : p);
@@ -113,7 +128,7 @@ export default function AdminDashboard() {
       setPage(1);
     } catch (e) {
       console.error("loadUsers error", e);
-      setError("Load users failed");
+      showToast("error", "An error occurred while loading users");
       setUsers([]);
       setTotal(0);
       setAdmins(0);
@@ -140,54 +155,80 @@ export default function AdminDashboard() {
   }, []);
 
   async function banUser(id: string) {
-    if (!confirm("Ban this user?")) return;
-    const res = await fetch(`/api/admin/users/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ banned: true }),
-      credentials: "same-origin",
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      alert(`Failed to ban user: ${res.status} ${data?.message || ""}`);
-      return;
+    if (!confirm("Are you sure you want to ban this user?")) return;
+    
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ banned: true }),
+        credentials: "same-origin",
+      });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast("error", data?.message || "Failed to ban user");
+        return;
+      }
+      
+      showToast("success", "User banned successfully");
+      await loadUsers(page, debouncedQuery);
+    } catch (e) {
+      console.error("ban error", e);
+      showToast("error", "An error occurred while banning user");
     }
-    await loadUsers(page, debouncedQuery);
   }
 
   async function unbanUser(id: string) {
-    if (!confirm("Unban this user?")) return;
-    const res = await fetch(`/api/admin/users/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ banned: false }),
-      credentials: "same-origin",
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      alert(`Failed to unban user: ${res.status} ${data?.message || ""}`);
-      return;
+    if (!confirm("Are you sure you want to unban this user?")) return;
+    
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ banned: false }),
+        credentials: "same-origin",
+      });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast("error", data?.message || "Failed to unban user");
+        return;
+      }
+      
+      showToast("success", "User unbanned successfully");
+      await loadUsers(page, debouncedQuery);
+    } catch (e) {
+      console.error("unban error", e);
+      showToast("error", "An error occurred while unbanning user");
     }
-    await loadUsers(page, debouncedQuery);
   }
 
   async function deleteUser(id: string) {
-    if (!confirm("Are you sure you want to delete this user and all files?")) return;
-    const res = await fetch(`/api/admin/users/${id}`, {
-      method: "DELETE",
-      credentials: "same-origin",
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      alert(`Failed to delete user: ${res.status} ${data?.message || ""}`);
-      return;
-    }
+    if (!confirm("Are you sure you want to delete this user and all their files?")) return;
+    
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast("error", data?.message || "Failed to delete user");
+        return;
+      }
 
-    const totalAfter = Math.max(0, total - 1);
-    const last = Math.max(1, Math.ceil(totalAfter / perPage));
-    const nextPage = page > last ? last : page;
-    setPage(nextPage);
-    await loadUsers(nextPage, debouncedQuery);
+      showToast("success", "User deleted successfully");
+      const totalAfter = Math.max(0, total - 1);
+      const last = Math.max(1, Math.ceil(totalAfter / perPage));
+      const nextPage = page > last ? last : page;
+      setPage(nextPage);
+      await loadUsers(nextPage, debouncedQuery);
+    } catch (e) {
+      console.error("delete error", e);
+      showToast("error", "An error occurred while deleting user");
+    }
   }
 
   function toggleUserSelection(user: UserItem) {
@@ -226,7 +267,7 @@ export default function AdminDashboard() {
 
   async function handleBatchBan() {
     if (selectedUsers.size === 0) {
-      alert("Please select at least one user to ban.");
+      showToast("warning", "Please select at least one user to ban");
       return;
     }
 
@@ -242,15 +283,16 @@ export default function AdminDashboard() {
       });
 
       if (res.ok) {
+        showToast("success", `${selectedUsers.size} user(s) banned successfully`);
         setSelectedUsers(new Set());
         await loadUsers(page, debouncedQuery);
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || "Batch ban failed");
+        showToast("error", data.message || "Batch ban failed");
       }
     } catch (e) {
       console.error("batch ban error", e);
-      alert("Batch ban failed");
+      showToast("error", "An error occurred while banning users");
     } finally {
       setBatchLoading(false);
     }
@@ -258,7 +300,7 @@ export default function AdminDashboard() {
 
   async function handleBatchUnban() {
     if (selectedUsers.size === 0) {
-      alert("Please select at least one user to unban.");
+      showToast("warning", "Please select at least one user to unban");
       return;
     }
 
@@ -274,15 +316,16 @@ export default function AdminDashboard() {
       });
 
       if (res.ok) {
+        showToast("success", `${selectedUsers.size} user(s) unbanned successfully`);
         setSelectedUsers(new Set());
         await loadUsers(page, debouncedQuery);
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || "Batch unban failed");
+        showToast("error", data.message || "Batch unban failed");
       }
     } catch (e) {
       console.error("batch unban error", e);
-      alert("Batch unban failed");
+      showToast("error", "An error occurred while unbanning users");
     } finally {
       setBatchLoading(false);
     }
@@ -290,7 +333,7 @@ export default function AdminDashboard() {
 
   async function handleBatchDelete() {
     if (selectedUsers.size === 0) {
-      alert("Please select at least one user to delete.");
+      showToast("warning", "Please select at least one user to delete");
       return;
     }
 
@@ -306,6 +349,7 @@ export default function AdminDashboard() {
       });
 
       if (res.ok) {
+        showToast("success", `${selectedUsers.size} user(s) deleted successfully`);
         const totalAfter = Math.max(0, total - selectedUsers.size);
         const last = Math.max(1, Math.ceil(totalAfter / perPage));
         const nextPage = page > last ? last : page;
@@ -314,18 +358,18 @@ export default function AdminDashboard() {
         await loadUsers(nextPage, debouncedQuery);
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || "Batch delete failed");
+        showToast("error", data.message || "Batch delete failed");
       }
     } catch (e) {
       console.error("batch delete error", e);
-      alert("Batch delete failed");
+      showToast("error", "An error occurred while deleting users");
     } finally {
       setBatchLoading(false);
     }
   }
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     window.location.href = "/login";
   }
 
@@ -340,6 +384,68 @@ export default function AdminDashboard() {
 
   return (
     <main className="home-landing app-shell">
+      <div style={{
+        position: "fixed",
+        top: "20px",
+        right: "20px",
+        zIndex: 9999,
+        maxWidth: "400px",
+        width: "100%",
+      }}>
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`alert alert-${
+              toast.type === "success" ? "success" :
+              toast.type === "error" ? "danger" :
+              toast.type === "warning" ? "warning" :
+              "info"
+            } alert-dismissible fade show mb-2 shadow-lg`}
+            role="alert"
+            style={{
+              animation: "slideInRight 0.3s ease-out",
+            }}
+          >
+            <div className="d-flex align-items-start">
+              <div className="me-2" style={{ fontSize: "1.2rem" }}>
+                {toast.type === "success" && "✅"}
+                {toast.type === "error" && "❌"}
+                {toast.type === "warning" && "⚠️"}
+                {toast.type === "info" && "ℹ️"}
+              </div>
+              <div className="flex-grow-1">
+                <strong className="d-block mb-1">
+                  {toast.type === "success" && "Success"}
+                  {toast.type === "error" && "Error"}
+                  {toast.type === "warning" && "Warning"}
+                  {toast.type === "info" && "Info"}
+                </strong>
+                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
+              </div>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => removeToast(toast.id)}
+                aria-label="Close"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
         <span className="navbar-brand">Admin Dashboard</span>
         
@@ -463,7 +569,7 @@ export default function AdminDashboard() {
                   <h2 className="mb-1 fw-bold" style={{ fontSize: "1.15rem" }}>List of Users</h2>
                   <p className="text-muted small mb-0">Manage roles, ban/unban users, and remove accounts.</p>
                 </div>
-                <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] shadow-sm">
+                <span className="landing-pill inline-flex items-centrerounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] shadow-sm">
                   {total} user(s)
                 </span>
               </div>
@@ -512,7 +618,7 @@ export default function AdminDashboard() {
                             onClick={handleBatchBan}
                             disabled={batchLoading}
                           >
-                            {batchLoading ? "..." : "🚫 Ban Selected"}
+                            {batchLoading ? "..." : "🚫 Ban"}
                           </button>
 
                           <button
@@ -529,7 +635,7 @@ export default function AdminDashboard() {
                             onClick={handleBatchUnban}
                             disabled={batchLoading}
                           >
-                            {batchLoading ? "..." : "✅ Unban Selected"}
+                            {batchLoading ? "..." : "✅ Unban"}
                           </button>
 
                           <button
@@ -546,7 +652,7 @@ export default function AdminDashboard() {
                             onClick={handleBatchDelete}
                             disabled={batchLoading}
                           >
-                            {batchLoading ? "..." : "🗑️ Delete Selected"}
+                            {batchLoading ? "..." : "🗑️ Delete"}
                           </button>
                         </div>
                       </>
@@ -556,7 +662,11 @@ export default function AdminDashboard() {
               )}
 
               {loading ? (
-                <div className="mt-4"><p>Loading...</p></div>
+                <div className="text-center py-5">
+                  <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                  </div>
+                </div>
               ) : users.length === 0 ? (
                 <div className="mt-4 landing-mini-card rounded-3 p-3 text-center small">
                   {query ? `No users found for "${query}"` : "There are no users yet."}
@@ -615,7 +725,7 @@ export default function AdminDashboard() {
                           </div>
                           
                           <div className="d-none d-md-block position-absolute start-0 bottom-0 small text-muted">
-                            {new Date(u.createdAt).toLocaleDateString("id-ID")}
+                            {new Date(u.createdAt).toLocaleDateString("en-US")}
                           </div>
 
                           <div className="d-none d-md-flex position-absolute end-0 bottom-0 gap-2">
@@ -634,7 +744,7 @@ export default function AdminDashboard() {
                           </div>
 
                           <div className="d-flex d-md-none justify-content-between align-items-center mt-3">
-                            <div className="small text-muted">{new Date(u.createdAt).toLocaleDateString("id-ID")}</div>
+                            <div className="small text-muted">{new Date(u.createdAt).toLocaleDateString("en-US")}</div>
 
                             <div className="d-flex gap-2">
                               {u.role === "USER" ? (
@@ -647,7 +757,7 @@ export default function AdminDashboard() {
                                   <button className="btn btn-sm btn-danger" onClick={() => deleteUser(u.id)}>Delete</button>
                                 </>
                               ) : (
-                                <span className="small text-muted">Admin accounts cannot be modified here.</span>
+                                <span className="small text-muted">Protected</span>
                               )}
                             </div>
                           </div>

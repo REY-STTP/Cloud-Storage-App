@@ -4,17 +4,28 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 
+interface Toast {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  message: string;
+}
+
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = (type: Toast["type"], message: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  };
+
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setMessage(null);
-    setError(null);
 
     try {
       const res = await fetch("/api/auth/forgot", {
@@ -26,13 +37,14 @@ export default function ForgotPasswordPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(data.message || "Failed to request password reset");
+        showToast("error", data.message || "Failed to request password reset");
       } else {
-        setMessage(data.message || "If the email exists, a reset link was sent.");
+        showToast("success", data.message || "If the email exists, a reset link was sent");
+        setEmail("");
       }
     } catch (err) {
       console.error(err);
-      setError("An error occurred");
+      showToast("error", "An error occurred while sending reset link");
     } finally {
       setLoading(false);
     }
@@ -40,6 +52,68 @@ export default function ForgotPasswordPage() {
 
   return (
     <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
+      <div style={{
+        position: "fixed",
+        top: "20px",
+        right: "20px",
+        zIndex: 9999,
+        maxWidth: "400px",
+        width: "100%",
+      }}>
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`alert alert-${
+              toast.type === "success" ? "success" :
+              toast.type === "error" ? "danger" :
+              toast.type === "warning" ? "warning" :
+              "info"
+            } alert-dismissible fade show mb-2 shadow-lg`}
+            role="alert"
+            style={{
+              animation: "slideInRight 0.3s ease-out",
+            }}
+          >
+            <div className="d-flex align-items-start">
+              <div className="me-2" style={{ fontSize: "1.2rem" }}>
+                {toast.type === "success" && "✅"}
+                {toast.type === "error" && "❌"}
+                {toast.type === "warning" && "⚠️"}
+                {toast.type === "info" && "ℹ️"}
+              </div>
+              <div className="flex-grow-1">
+                <strong className="d-block mb-1">
+                  {toast.type === "success" && "Success"}
+                  {toast.type === "error" && "Error"}
+                  {toast.type === "warning" && "Warning"}
+                  {toast.type === "info" && "Info"}
+                </strong>
+                <div style={{ fontSize: "0.9rem" }}>{toast.message}</div>
+              </div>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => removeToast(toast.id)}
+                aria-label="Close"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+
       <div className="max-w-5xl w-full grid gap-10 md:grid-cols-2 items-center">
         <section className="d-none d-md-block">
           <div className="mb-3">
@@ -77,9 +151,6 @@ export default function ForgotPasswordPage() {
                 <h2 className="card-title mb-1 text-center fw-bold">Forgot password</h2>
                 <p className="text-muted small mb-0 text-center">Enter the email associated with your account.</p>
               </div>
-
-              {error && <div className="alert alert-danger">{error}</div>}
-              {message && <div className="alert alert-success">{message}</div>}
 
               <form onSubmit={handleSubmit}>
                 <div className="mb-3">
