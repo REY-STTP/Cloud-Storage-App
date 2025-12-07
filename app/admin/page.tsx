@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast } from "@/components/ToastProvider";
 
 interface UserItem {
   id: string;
@@ -13,12 +14,6 @@ interface UserItem {
   createdAt: string;
   fileCount?: number | null;
   totalSizeBytes?: number | null;
-}
-
-interface Toast {
-  id: string;
-  type: "success" | "error" | "info" | "warning";
-  message: string;
 }
 
 function formatSize(bytes?: number | null) {
@@ -124,6 +119,7 @@ function ConfirmDialog({
 }
 
 export default function AdminDashboard() {
+  const { showToast } = useToast()
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -140,16 +136,6 @@ export default function AdminDashboard() {
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
-
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const showToast = (type: Toast["type"], message: string) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
-  };
-
-  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 400);
@@ -545,98 +531,7 @@ export default function AdminDashboard() {
 
   return (
     <main className="home-landing app-shell">
-      <div
-        style={{
-          position: "fixed",
-          top: "16px",
-          right: "16px",
-          left: "16px",
-          zIndex: 9999,
-          pointerEvents: "none",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: "8px",
-            maxWidth: "420px",
-            marginLeft: "auto",
-          }}
-        >
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`alert alert-${
-                toast.type === "success"
-                  ? "success"
-                  : toast.type === "error"
-                  ? "danger"
-                  : toast.type === "warning"
-                  ? "warning"
-                  : "info"
-              } alert-dismissible fade show shadow-lg`}
-              role="alert"
-              style={{
-                animation: "slideInRight 0.3s ease-out",
-                pointerEvents: "auto",
-                width: "100%",
-                margin: 0,
-              }}
-            >
-              <div className="d-flex align-items-start">
-                <div className="me-2" style={{ fontSize: "1.25rem", lineHeight: 1 }}>
-                  {toast.type === "success" && "✅"}
-                  {toast.type === "error" && "❌"}
-                  {toast.type === "warning" && "⚠️"}
-                  {toast.type === "info" && "ℹ️"}
-                </div>
-
-                <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                  <strong className="d-block mb-1">
-                    {toast.type === "success" && "Success"}
-                    {toast.type === "error" && "Error"}
-                    {toast.type === "warning" && "Warning"}
-                    {toast.type === "info" && "Info"}
-                  </strong>
-                  <div style={{ fontSize: "0.9rem", wordBreak: "break-word" }}>
-                    {toast.message}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-close ms-2"
-                  aria-label="Close"
-                  onClick={() => removeToast(toast.id)}
-                  style={{ flexShrink: 0 }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <style jsx>{`
-        @keyframes slideInRight {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-
-        @media (max-width: 576px) {
-          .alert {
-            font-size: 0.875rem;
-          }
-        }
-      `}</style>
-
+      
       <ConfirmDialog
         open={confirmState.open}
         title={confirmState.title}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
+import { ToastProvider } from "@/components/ToastProvider";
 
 export const metadata: Metadata = {
   title: "Cloud Storage App",
@@ -16,8 +17,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen">
-        {children}
-        <ThemeToggle />
+        <ToastProvider>
+          {children}
+          <ThemeToggle />
+        </ToastProvider>
       </body>
     </html>
   );

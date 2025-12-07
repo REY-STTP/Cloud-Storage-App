@@ -3,32 +3,16 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-
-interface Toast {
-  id: string;
-  type: "success" | "error" | "info" | "warning";
-  message: string;
-}
+import { useToast } from "@/components/ToastProvider";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("Admin123!");
+  const { showToast } = useToast()
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const showToast = (type: Toast["type"], message: string) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
-  };
-
-  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -67,98 +51,6 @@ export default function LoginPage() {
 
   return (
     <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
-      <div
-        style={{
-          position: "fixed",
-          top: "16px",
-          right: "16px",
-          left: "16px",
-          zIndex: 9999,
-          pointerEvents: "none",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: "8px",
-            maxWidth: "420px",
-            marginLeft: "auto",
-          }}
-        >
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`alert alert-${
-                toast.type === "success"
-                  ? "success"
-                  : toast.type === "error"
-                  ? "danger"
-                  : toast.type === "warning"
-                  ? "warning"
-                  : "info"
-              } alert-dismissible fade show shadow-lg`}
-              role="alert"
-              style={{
-                animation: "slideInRight 0.3s ease-out",
-                pointerEvents: "auto",
-                width: "100%",
-                margin: 0,
-              }}
-            >
-              <div className="d-flex align-items-start">
-                <div className="me-2" style={{ fontSize: "1.25rem", lineHeight: 1 }}>
-                  {toast.type === "success" && "✅"}
-                  {toast.type === "error" && "❌"}
-                  {toast.type === "warning" && "⚠️"}
-                  {toast.type === "info" && "ℹ️"}
-                </div>
-
-                <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                  <strong className="d-block mb-1">
-                    {toast.type === "success" && "Success"}
-                    {toast.type === "error" && "Error"}
-                    {toast.type === "warning" && "Warning"}
-                    {toast.type === "info" && "Info"}
-                  </strong>
-                  <div style={{ fontSize: "0.9rem", wordBreak: "break-word" }}>
-                    {toast.message}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-close ms-2"
-                  aria-label="Close"
-                  onClick={() => removeToast(toast.id)}
-                  style={{ flexShrink: 0 }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <style jsx>{`
-        @keyframes slideInRight {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-
-        @media (max-width: 576px) {
-          .alert {
-            font-size: 0.875rem;
-          }
-        }
-      `}</style>
-
       <div className="max-w-5xl w-full grid gap-10 md:grid-cols-2 items-center">
         <section className="d-none d-md-block">
           <div className="mb-3">
