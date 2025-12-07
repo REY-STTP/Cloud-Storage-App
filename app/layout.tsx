@@ -1,8 +1,10 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
 import { ToastProvider } from "@/components/ToastProvider";
+import { ConfirmDialogProvider } from "@/components/ConfirmDialogProvider";
 
 export const metadata: Metadata = {
   title: "Cloud Storage App",
@@ -18,8 +20,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen">
         <ToastProvider>
-          {children}
-          <ThemeToggle />
+          <ConfirmDialogProvider>
+            {children}
+            <ThemeToggle />
+          </ConfirmDialogProvider>
         </ToastProvider>
       </body>
     </html>

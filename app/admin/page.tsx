@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 
 interface UserItem {
   id: string;
@@ -28,98 +29,10 @@ function formatSize(bytes?: number | null) {
   return `${value.toFixed(1)} ${units[i]}`;
 }
 
-function ConfirmDialog({
-  open,
-  title,
-  description,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
-  danger = false,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  description?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  danger?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (!open) return;
-      if (e.key === "Escape") onCancel();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
-
-  return (
-    <>
-      <div
-        className="confirm-backdrop"
-        aria-hidden="true"
-        onClick={onCancel}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.45)",
-          zIndex: 12000,
-        }}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirm-title"
-        className="confirm-dialog"
-        style={{
-          position: "fixed",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-          zIndex: 12001,
-          width: "min(560px, 94%)",
-          background: "white",
-          borderRadius: 12,
-          boxShadow: "0 10px 40px rgba(2,6,23,0.3)",
-          padding: "18px 20px",
-        }}
-      >
-        <h3 id="confirm-title" style={{ margin: 0, fontSize: 18 }}>
-          {title}
-        </h3>
-        {description && <p style={{ marginTop: 8, color: "#374151" }}>{description}</p>}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn btn-outline-secondary"
-            style={{ minWidth: 96 }}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={danger ? "btn btn-danger" : "btn btn-primary"}
-            style={{ minWidth: 96 }}
-            autoFocus
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
 export default function AdminDashboard() {
   const { showToast } = useToast()
+  const { confirm } = useConfirmDialog()
+
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -252,39 +165,17 @@ export default function AdminDashboard() {
     }
   }
 
-  const [confirmState, setConfirmState] = useState<{
-    open: boolean;
-    title: string;
-    description?: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    danger?: boolean;
-    onConfirm?: () => void;
-  }>({ open: false, title: "" });
-
-  function openConfirm(config: {
-    title: string;
-    description?: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    danger?: boolean;
-    onConfirm: () => void;
-  }) {
-    setConfirmState({
-      open: true,
-      title: config.title,
-      description: config.description,
-      confirmLabel: config.confirmLabel,
-      cancelLabel: config.cancelLabel,
-      danger: config.danger,
-      onConfirm: () => {
-        setConfirmState((s) => ({ ...s, open: false }));
-        setTimeout(() => config.onConfirm(), 100);
-      },
+  async function banUser(id: string) {
+    const ok = await confirm({
+      title: "Ban this user?",
+      description: "Banning will prevent this user from logging in. You can unban later.",
+      confirmLabel: "Ban user",
+      cancelLabel: "Cancel",
+      danger: true,
     });
-  }
-  
-  async function doBanUser(id: string) {
+
+    if (!ok) return;
+
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: "PATCH",
@@ -307,7 +198,17 @@ export default function AdminDashboard() {
     }
   }
 
-  async function doUnbanUser(id: string) {
+  async function unbanUser(id: string) {
+    const ok = await confirm({
+      title: "Unban this user?",
+      description: "Restore access for this user?",
+      confirmLabel: "Unban user",
+      cancelLabel: "Cancel",
+      danger: false,
+    });
+
+    if (!ok) return;
+
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: "PATCH",
@@ -330,7 +231,17 @@ export default function AdminDashboard() {
     }
   }
 
-  async function doDeleteUser(id: string) {
+  async function deleteUser(id: string) {
+    const ok = await confirm({
+      title: "Delete this user?",
+      description: "This will permanently delete the user and all their files. This action cannot be undone.",
+      confirmLabel: "Delete user",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+
+    if (!ok) return;
+
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: "DELETE",
@@ -355,7 +266,23 @@ export default function AdminDashboard() {
     }
   }
 
-  async function doBatchBan(ids: string[]) {
+  async function handleBatchBan() {
+    if (selectedUsers.size === 0) {
+      showToast("warning", "Please select at least one user to ban");
+      return;
+    }
+    const ok = await confirm({
+      title: `Ban ${selectedUsers.size} user(s)?`,
+      description: `This will ban ${selectedUsers.size} selected user(s).`,
+      confirmLabel: "Ban selected",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+
+    if (!ok) return;
+
+    const ids = Array.from(selectedUsers)
+
     setBatchLoading(true);
     try {
       const res = await fetch("/api/admin/users/batch", {
@@ -381,7 +308,23 @@ export default function AdminDashboard() {
     }
   }
 
-  async function doBatchUnban(ids: string[]) {
+  async function handleBatchUnban() {
+    if (selectedUsers.size === 0) {
+      showToast("warning", "Please select at least one user to unban");
+      return;
+    }
+    const ok = await confirm({
+      title: `Unban ${selectedUsers.size} user(s)?`,
+      description: `This will unban ${selectedUsers.size} selected user(s).`,
+      confirmLabel: "Unban selected",
+      cancelLabel: "Cancel",
+      danger: false,
+    });
+
+    if (!ok) return;
+
+    const ids = Array.from(selectedUsers)
+
     setBatchLoading(true);
     try {
       const res = await fetch("/api/admin/users/batch", {
@@ -407,7 +350,23 @@ export default function AdminDashboard() {
     }
   }
 
-  async function doBatchDelete(ids: string[]) {
+  async function handleBatchDelete() {
+    if (selectedUsers.size === 0) {
+      showToast("warning", "Please select at least one user to delete");
+      return;
+    }
+    const ok = await confirm({
+      title: `Delete ${selectedUsers.size} user(s)?`,
+      description: `This will permanently delete ${selectedUsers.size} selected user(s) and their files.`,
+      confirmLabel: "Delete selected",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+
+    if (!ok) return;
+
+    const ids = Array.from(selectedUsers)
+
     setBatchLoading(true);
     try {
       const res = await fetch("/api/admin/users/batch", {
@@ -437,84 +396,6 @@ export default function AdminDashboard() {
     }
   }
 
-  function banUser(id: string) {
-    openConfirm({
-      title: "Ban this user?",
-      description: "Banning will prevent this user from logging in. You can unban later.",
-      confirmLabel: "Ban user",
-      cancelLabel: "Cancel",
-      danger: true,
-      onConfirm: async () => doBanUser(id),
-    });
-  }
-
-  function unbanUser(id: string) {
-    openConfirm({
-      title: "Unban this user?",
-      description: "Restore access for this user?",
-      confirmLabel: "Unban user",
-      cancelLabel: "Cancel",
-      danger: false,
-      onConfirm: async () => doUnbanUser(id),
-    });
-  }
-
-  function deleteUser(id: string) {
-    openConfirm({
-      title: "Delete this user?",
-      description: "This will permanently delete the user and all their files. This action cannot be undone.",
-      confirmLabel: "Delete user",
-      cancelLabel: "Cancel",
-      danger: true,
-      onConfirm: async () => doDeleteUser(id),
-    });
-  }
-
-  function handleBatchBan() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to ban");
-      return;
-    }
-    openConfirm({
-      title: `Ban ${selectedUsers.size} user(s)?`,
-      description: `This will ban ${selectedUsers.size} selected user(s).`,
-      confirmLabel: "Ban selected",
-      cancelLabel: "Cancel",
-      danger: true,
-      onConfirm: async () => doBatchBan(Array.from(selectedUsers)),
-    });
-  }
-
-  function handleBatchUnban() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to unban");
-      return;
-    }
-    openConfirm({
-      title: `Unban ${selectedUsers.size} user(s)?`,
-      description: `This will unban ${selectedUsers.size} selected user(s).`,
-      confirmLabel: "Unban selected",
-      cancelLabel: "Cancel",
-      danger: false,
-      onConfirm: async () => doBatchUnban(Array.from(selectedUsers)),
-    });
-  }
-
-  function handleBatchDelete() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to delete");
-      return;
-    }
-    openConfirm({
-      title: `Delete ${selectedUsers.size} user(s)?`,
-      description: `This will permanently delete ${selectedUsers.size} selected user(s) and their files.`,
-      confirmLabel: "Delete selected",
-      cancelLabel: "Cancel",
-      danger: true,
-      onConfirm: async () => doBatchDelete(Array.from(selectedUsers)),
-    });
-  }
-
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     window.location.href = "/login";
@@ -531,18 +412,6 @@ export default function AdminDashboard() {
 
   return (
     <main className="home-landing app-shell">
-      
-      <ConfirmDialog
-        open={confirmState.open}
-        title={confirmState.title}
-        description={confirmState.description}
-        confirmLabel={confirmState.confirmLabel}
-        cancelLabel={confirmState.cancelLabel}
-        danger={confirmState.danger}
-        onConfirm={() => confirmState.onConfirm && confirmState.onConfirm()}
-        onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
-      />
-
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
         <span className="navbar-brand">Admin Dashboard</span>
 

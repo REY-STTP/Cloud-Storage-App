@@ -4,6 +4,7 @@
 import { FormEvent, useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 
 interface Profile {
   id: string;
@@ -14,97 +15,12 @@ interface Profile {
   createdAt: string;
 }
 
-function ConfirmDialog({
-  open,
-  title,
-  description,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
-  danger = false,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  description?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  danger?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (!open) return;
-      if (e.key === "Escape") onCancel();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
-
-  return (
-    <>
-      <div
-        className="confirm-backdrop"
-        aria-hidden="true"
-        onClick={onCancel}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.45)",
-          zIndex: 11000,
-        }}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirm-title"
-        className="confirm-dialog"
-        style={{
-          position: "fixed",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-          zIndex: 11001,
-          width: "min(560px, 94%)",
-          background: "white",
-          borderRadius: 12,
-          boxShadow: "0 10px 40px rgba(2,6,23,0.3)",
-          padding: "18px 20px",
-        }}
-      >
-        <h3 id="confirm-title" style={{ margin: 0, fontSize: 18 }}>{title}</h3>
-        {description && <p style={{ marginTop: 8, color: "#374151" }}>{description}</p>}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn btn-outline-secondary"
-            style={{ minWidth: 96 }}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={danger ? "btn btn-danger" : "btn btn-primary"}
-            style={{ minWidth: 96 }}
-            autoFocus
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
 function ProfilePageContent() {
   const params = useSearchParams();
+
   const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -118,16 +34,6 @@ function ProfilePageContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
-
-  const [confirmState, setConfirmState] = useState<{
-    open: boolean;
-    title: string;
-    description?: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    danger?: boolean;
-    onConfirm?: () => void;
-  }>({ open: false, title: "" });
 
   async function loadProfile() {
     setLoading(true);
@@ -161,88 +67,68 @@ function ProfilePageContent() {
     }
   }, [params]);
 
-  function openConfirm(config: {
-    title: string;
-    description?: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    danger?: boolean;
-    onConfirm: () => void;
-  }) {
-    setConfirmState({
-      open: true,
-      title: config.title,
-      description: config.description,
-      confirmLabel: config.confirmLabel,
-      cancelLabel: config.cancelLabel,
-      danger: config.danger,
-      onConfirm: () => {
-        setConfirmState((s) => ({ ...s, open: false }));
-        setTimeout(() => config.onConfirm(), 100);
-      },
-    });
-  }
-
-  function handleDeleteAccount() {
-    openConfirm({
+  async function handleDeleteAccount() {
+    const ok = await confirm({
       title: "Delete your account?",
       description:
         "This will permanently delete your account and all files. This action cannot be undone. Are you sure?",
       confirmLabel: "Delete account",
       cancelLabel: "Cancel",
       danger: true,
-      onConfirm: async () => {
-        try {
-          const res = await fetch("/api/user/profile", {
-            method: "DELETE",
-          });
-          const data = await res.json().catch(() => null);
-          if (!res.ok) {
-            showToast("error", data?.message || "Failed to delete account");
-          } else {
-            showToast("success", "Your account has been deleted");
-            setTimeout(() => {
-              window.location.href = "/register";
-            }, 1200);
-          }
-        } catch (e) {
-          console.error(e);
-          showToast("error", "Server error when deleting account");
-        }
-      },
-    });
+    })
+    
+    if (!ok) return;
+
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        showToast("error", data?.message || "Failed to delete account");
+      } else {
+        showToast("success", "Your account has been deleted");
+        setTimeout(() => {
+          window.location.href = "/register";
+        }, 1200);
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Server error when deleting account");
+    }
   }
 
-  function requestVerificationEmail() {
+  async function requestVerificationEmail() {
     if (!profile) return;
-    openConfirm({
+    const ok = confirm({
       title: "Send verification email?",
       description: `Send a verification email to ${profile.email}? Check your inbox (and spam) after sending.`,
       confirmLabel: "Send email",
       cancelLabel: "Cancel",
       danger: false,
-      onConfirm: async () => {
-        setRequestLoading(true);
-        try {
-          const res = await fetch("/api/auth/verify-request", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: profile.email }),
-          });
-          const data = await res.json().catch(() => null);
-          if (res.ok) {
-            showToast("success", data?.message || "Verification email sent. Check your inbox");
-          } else {
-            showToast("error", data?.message || "Failed to send verification email");
-          }
-        } catch (e) {
-          console.error("requestVerificationEmail error", e);
-          showToast("error", "Server error when sending verification email");
-        } finally {
-          setRequestLoading(false);
-        }
-      },
-    });
+    })
+
+    if (!ok) return;
+
+    setRequestLoading(true);
+    try {
+      const res = await fetch("/api/auth/verify-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: profile.email }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast("success", data?.message || "Verification email sent. Check your inbox");
+      } else {
+        showToast("error", data?.message || "Failed to send verification email");
+      }
+    } catch (e) {
+      console.error("requestVerificationEmail error", e);
+      showToast("error", "Server error when sending verification email");
+    } finally {
+      setRequestLoading(false);
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -303,18 +189,6 @@ function ProfilePageContent() {
 
   return (
     <main className="home-landing app-shell">
-      
-      <ConfirmDialog
-        open={confirmState.open}
-        title={confirmState.title}
-        description={confirmState.description}
-        confirmLabel={confirmState.confirmLabel}
-        cancelLabel={confirmState.cancelLabel}
-        danger={confirmState.danger}
-        onConfirm={() => confirmState.onConfirm && confirmState.onConfirm()}
-        onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
-      />
-
       <nav className="navbar navbar-expand-lg px-4 navbar-dark bg-dark">
         <span className="navbar-brand">User Profile</span>
         <div className="ms-auto d-flex gap-2">
