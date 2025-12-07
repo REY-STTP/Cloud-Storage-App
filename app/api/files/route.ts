@@ -5,6 +5,7 @@ import { User } from "@/models/User";
 import { File as FileModel } from "@/models/File";
 import { verifyJwt } from "@/lib/auth";
 import { v2 as cloudinary } from "cloudinary";
+import { Types } from "mongoose";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,9 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
 });
+
+const MAX_STORAGE_BYTES =
+  Number(process.env.MAX_STORAGE_BYTES ?? 1073741824);
 
 const ALLOWED_FILE_CONFIG = {
   images: {
@@ -156,7 +160,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "No files uploaded" }, { status: 400 });
   }
 
-  const savedFiles = [];
+  const usageAgg = await FileModel.aggregate([
+    {
+      $match: { owner: new Types.ObjectId(payload.userId) },
+    },
+    {
+      $group: {
+        _id: null,
+        totalSize: { $sum: "$size" },
+      },
+    },
+  ]);
+
+  let usedBytes = usageAgg[0]?.totalSize ?? 0;
+
+  const savedFiles: any[] = [];
 
   for (const file of files) {
     if (!(file instanceof Blob)) continue;
@@ -167,6 +185,18 @@ export async function POST(req: NextRequest) {
         id: null,
         filename: file.name,
         error: validation.error,
+      });
+      continue;
+    }
+
+    const fileSize = file.size || 0;
+
+    if (usedBytes + fileSize > MAX_STORAGE_BYTES) {
+      savedFiles.push({
+        id: null,
+        filename: file.name,
+        error:
+          "Your storage has reached its maximum capacity. Please delete some files first.",
       });
       continue;
     }
@@ -182,23 +212,25 @@ export async function POST(req: NextRequest) {
       }
 
       const uploaded = await new Promise<any>((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          {
-            folder: process.env.CLOUDINARY_FOLDER || "cloud-storage-app",
-            public_id: `${Date.now()}-${file.name}`,
-            resource_type: resourceType,
-          },
-          (err, result) => {
-            if (err) {
-              console.error("Cloudinary upload error:", err);
-              return reject(err);
+        cloudinary.uploader
+          .upload_stream(
+            {
+              folder: process.env.CLOUDINARY_FOLDER || "cloud-storage-app",
+              public_id: `${Date.now()}-${file.name}`,
+              resource_type: resourceType,
+            },
+            (err, result) => {
+              if (err) {
+                console.error("Cloudinary upload error:", err);
+                return reject(err);
+              }
+              if (!result) {
+                return reject(new Error("No result from Cloudinary"));
+              }
+              resolve(result);
             }
-            if (!result) {
-              return reject(new Error("No result from Cloudinary"));
-            }
-            resolve(result);
-          }
-        ).end(buffer);
+          )
+          .end(buffer);
       });
 
       if (!uploaded || !uploaded.secure_url) {
@@ -218,6 +250,8 @@ export async function POST(req: NextRequest) {
         resourceType: finalResourceType,
         owner: payload.userId,
       });
+
+      usedBytes += saved.size ?? fileSize;
 
       savedFiles.push({
         id: saved._id.toString(),

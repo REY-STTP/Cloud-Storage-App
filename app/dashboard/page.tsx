@@ -58,6 +58,13 @@ export default function DashboardPage() {
 
   const [showMobileSearch, setShowMobileSearch] = useState(false);
 
+  const [storage, setStorage] = useState<{
+    usedBytes: number;
+    remainingBytes: number;
+    maxBytes: number;
+    usedPercent: number;
+  } | null>(null);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), 400);
     return () => clearTimeout(t);
@@ -118,19 +125,34 @@ export default function DashboardPage() {
     }
   }
 
+  async function loadStorage() {
+    try {
+      const res = await fetch("/api/user/storage", { credentials: "same-origin" });
+      if (res.ok) {
+        const data = await res.json();
+        setStorage(data);
+      }
+    } catch (e) {
+      console.warn("Failed to load storage info", e);
+    }
+  }
+
   useEffect(() => {
     setPage(1);
     setSelectedFiles(new Set());
     loadFiles(1, debouncedQuery);
+    loadStorage();
   }, [debouncedQuery]);
 
   useEffect(() => {
     loadFiles(page, debouncedQuery);
+    loadStorage();
   }, [page]);
 
   useEffect(() => {
     loadProfile();
     loadFiles(1, debouncedQuery);
+    loadStorage();
   }, []);
 
   function toggleFileSelection(id: string) {
@@ -189,6 +211,7 @@ export default function DashboardPage() {
 
         setPage(1);
         await loadFiles(1, debouncedQuery);
+        await loadStorage(); 
         setFilesToUpload([]);
 
         const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -226,6 +249,7 @@ export default function DashboardPage() {
         const nextPage = page > last ? last : page;
         setPage(nextPage);
         await loadFiles(nextPage, debouncedQuery);
+        await loadStorage(); 
       } else {
         const data = await res.json().catch(() => ({}));
         showToast("error", data.message || "Failed to delete file");
@@ -271,6 +295,7 @@ export default function DashboardPage() {
         setSelectedFiles(new Set());
         setPage(nextPage);
         await loadFiles(nextPage, debouncedQuery);
+        await loadStorage(); 
       } else {
         const data = await res.json().catch(() => ({}));
         showToast("error", data.message || "Failed to delete files");
@@ -455,6 +480,30 @@ export default function DashboardPage() {
             <div className="landing-card shadow-lg border-0 p-4">
               <h5 className="card-title mb-3 fw-bold">Upload file</h5>
 
+              {storage && (
+                <div className="mb-3">
+                  <div className="small text-muted">
+                    Used: {formatSize(storage.usedBytes)} / {formatSize(storage.maxBytes)} (
+                    {storage.usedPercent}%)
+                  </div>
+                  <div className="progress" style={{ height: 6 }}>
+                    <div
+                      className="progress-bar"
+                      role="progressbar"
+                      style={{ width: `${storage.usedPercent}%` }}
+                      aria-valuenow={storage.usedPercent}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    ></div>
+                  </div>
+                  {storage.usedBytes >= storage.maxBytes && (
+                    <div className="text-danger small mt-1">
+                      Your storage has reached its maximum capacity. Please delete some files first.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <form onSubmit={handleUpload}>
                 <input
                   type="file"
@@ -472,7 +521,11 @@ export default function DashboardPage() {
 
                 {filesToUpload.length > 0 && <p className="small text-muted mb-2">{filesToUpload.length} file selected</p>}
 
-                <button className="btn btn-primary w-100" type="submit" disabled={uploading}>
+                <button 
+                  className="btn btn-primary w-100" 
+                  type="submit" 
+                  disabled={uploading || (storage ? storage.usedBytes >= storage.maxBytes : false)}
+                >
                   {uploading ? "Uploading..." : "Upload"}
                 </button>
               </form>
