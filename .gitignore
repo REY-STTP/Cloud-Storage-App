@@ -45,7 +45,3 @@ next-env.d.ts
 /.agents/
 /.impeccable/
 skills-lock.json
-
-# Markdown File
-PRODUCT.md
-README.md
