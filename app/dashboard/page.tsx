@@ -11,7 +11,6 @@ import {
   CloudUploadIcon,
   DownloadIcon,
   FileIcon,
-  HardDriveIcon,
   InboxIcon,
   LogOutIcon,
   SearchXIcon,
@@ -389,7 +388,7 @@ export default function DashboardPage() {
           placeholder: "Search files...",
         }}
       >
-        <Button variant="ghost" size="sm" render={<Link href="/dashboard/profile" />}>
+        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/dashboard/profile" />}>
           <UserIcon data-icon="inline-start" />
           <span className="hidden sm:inline">Profile</span>
         </Button>
@@ -401,12 +400,10 @@ export default function DashboardPage() {
 
       <div className="mx-auto w-full max-w-6xl px-4 py-8">
         <div className="mb-6">
-          <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <HardDriveIcon className="size-3" />
-            Your storage
-          </span>
-          <h1 className="font-heading text-2xl font-bold tracking-tight">My files</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="font-heading text-3xl font-semibold tracking-tight">
+            My files
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Upload, rename, download, and delete your files from a simple dashboard.
           </p>
         </div>
@@ -443,10 +440,12 @@ export default function DashboardPage() {
               )}
 
               <form onSubmit={handleUpload}>
-                <Input
+                {/* Native input: sr-only must not fight the styled Input's w-full. */}
+                <input
+                  id="upload-files"
                   type="file"
                   multiple
-                  className="mb-2"
+                  className="peer sr-only"
                   onChange={(e) => {
                     const list = e.target.files;
                     if (!list) {
@@ -456,6 +455,13 @@ export default function DashboardPage() {
                     setFilesToUpload(Array.from(list));
                   }}
                 />
+                <label
+                  htmlFor="upload-files"
+                  className="mb-2 flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-input px-3 py-1 text-sm font-medium whitespace-nowrap shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
+                >
+                  <CloudUploadIcon className="size-4" />
+                  Choose files
+                </label>
 
                 {filesToUpload.length > 0 && (
                   <p className="tnum mb-2 text-xs text-muted-foreground">
@@ -583,7 +589,7 @@ export default function DashboardPage() {
                           <div className="min-w-0 grow">
                             <div className="truncate font-semibold">{f.filename}</div>
                             <div className="tnum text-xs text-muted-foreground">
-                              {formatSize(f.size)} · {new Date(f.createdAt).toLocaleString("id-ID")}
+                              {formatSize(f.size)} · {new Date(f.createdAt).toLocaleString("en-US")}
                             </div>
                           </div>
                         </div>

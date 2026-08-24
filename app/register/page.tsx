@@ -78,25 +78,21 @@ export default function RegisterPage() {
     <AuthShell
       left={
         <>
-          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <FolderIcon className="size-3" />
-            Get started
-          </span>
-          <h1 className="mb-2 max-w-[24ch] font-heading text-2xl font-bold tracking-tight">
+          <h1 className="mb-3 max-w-[22ch] font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             Create your cloud storage account
           </h1>
-          <p className="mb-4 max-w-[44ch] text-sm text-muted-foreground">
+          <p className="mb-6 max-w-[44ch] leading-relaxed text-muted-foreground">
             Register as a user to upload and manage your files in a simple
             dashboard. You can rename, download, and delete files anytime.
           </p>
 
-          <div className="flex gap-3 rounded-xl border bg-card p-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground">
-              <FolderIcon className="size-4" />
+          <div className="shadow-card flex gap-3 rounded-2xl border bg-card p-4">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <FolderIcon className="size-5" />
             </span>
             <div>
               <div className="text-sm font-semibold">User dashboard</div>
-              <div className="text-sm text-muted-foreground">
+              <div className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
                 Upload multiple files, rename them, and download them back
                 whenever you need.
               </div>
@@ -106,11 +102,11 @@ export default function RegisterPage() {
       }
       card={
         <>
-          <div className="mb-4">
-            <span className="mb-3 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <CloudIcon className="size-4" />
+          <div className="mb-5">
+            <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
+              <CloudIcon className="size-5" />
             </span>
-            <h2 className="mb-1 font-heading text-xl font-bold tracking-tight">
+            <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Register
             </h2>
             <p className="text-sm text-muted-foreground">

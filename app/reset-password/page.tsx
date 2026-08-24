@@ -4,7 +4,7 @@
 import { FormEvent, useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ArrowLeftIcon, CloudIcon, KeyRoundIcon, ShieldIcon } from "lucide-react";
+import { ArrowLeftIcon, CloudIcon, ShieldIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell from "@/components/AuthShell";
 import { Button } from "@/components/ui/button";
@@ -74,24 +74,20 @@ function ResetPasswordPageContent() {
     <AuthShell
       left={
         <>
-          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <KeyRoundIcon className="size-3" />
-            Reset password
-          </span>
-          <h1 className="mb-2 max-w-[24ch] font-heading text-2xl font-bold tracking-tight">
+          <h1 className="mb-3 max-w-[22ch] font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             Set a new password
           </h1>
-          <p className="mb-4 max-w-[44ch] text-sm text-muted-foreground">
+          <p className="mb-6 max-w-[44ch] leading-relaxed text-muted-foreground">
             Choose a strong password and confirm it. After success you will be
             redirected to login.
           </p>
 
-          <div className="rounded-xl border bg-card p-3">
+          <div className="shadow-card rounded-2xl border bg-card p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <ShieldIcon className="size-3.5 text-muted-foreground" />
+              <ShieldIcon className="size-4 text-primary" />
               Tips for a strong password
             </div>
-            <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+            <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed text-muted-foreground">
               <li>Use at least 8 characters for better security.</li>
               <li>Mix letters and numbers.</li>
               <li>Do not reuse passwords used elsewhere.</li>
@@ -101,11 +97,11 @@ function ResetPasswordPageContent() {
       }
       card={
         <>
-          <div className="mb-4">
-            <span className="mb-3 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <CloudIcon className="size-4" />
+          <div className="mb-5">
+            <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
+              <CloudIcon className="size-5" />
             </span>
-            <h2 className="mb-1 font-heading text-xl font-bold tracking-tight">
+            <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Create a new password
             </h2>
             <p className="text-sm text-muted-foreground">

@@ -4,7 +4,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { KeyRoundIcon, UserIcon } from "lucide-react";
+import { KeyRoundIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell from "@/components/AuthShell";
 import { Button } from "@/components/ui/button";
@@ -60,26 +60,22 @@ export default function LoginPage() {
     <AuthShell
       left={
         <>
-          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <UserIcon className="size-3" />
-            Welcome back
-          </span>
-          <h1 className="mb-2 max-w-[24ch] font-heading text-2xl font-bold tracking-tight">
+          <h1 className="mb-3 max-w-[22ch] font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             Sign in and manage your cloud files
           </h1>
-          <p className="mb-4 max-w-[44ch] text-sm text-muted-foreground">
+          <p className="mb-6 max-w-[44ch] leading-relaxed text-muted-foreground">
             Use your account to upload, rename, download, and delete files
             from your personal dashboard. Admins can also manage users and
             clean up data.
           </p>
 
-          <div className="flex gap-3 rounded-xl border bg-card p-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground">
-              <KeyRoundIcon className="size-4" />
+          <div className="shadow-card flex gap-3 rounded-2xl border bg-card p-4">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <KeyRoundIcon className="size-5" />
             </span>
             <div>
               <div className="text-sm font-semibold">Secure login</div>
-              <div className="text-sm text-muted-foreground">
+              <div className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
                 JWT-based authentication with protected routes for user and
                 admin dashboards.
               </div>
@@ -89,11 +85,11 @@ export default function LoginPage() {
       }
       card={
         <>
-          <div className="mb-4">
-            <span className="mb-3 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <KeyRoundIcon className="size-4" />
+          <div className="mb-5">
+            <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
+              <KeyRoundIcon className="size-5" />
             </span>
-            <h2 className="mb-1 font-heading text-xl font-bold tracking-tight">
+            <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Login
             </h2>
             <p className="text-sm text-muted-foreground">

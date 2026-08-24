@@ -4,77 +4,91 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+  Cloud Storage — Modern SaaS polish (category standard, confirmed 2026-08-24).
+  Cool near-white grounds, deep navy-slate ink, one confident blue primary.
+  Dark mode is a deep navy, never pure black. One gray family, one accent.
+*/
+
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --radius: 0.75rem;
+  --background: oklch(0.985 0.004 248);
+  --foreground: oklch(0.235 0.038 264);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.235 0.038 264);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.235 0.038 264);
+  --primary: oklch(0.546 0.195 262);
+  --primary-foreground: oklch(0.985 0.004 248);
+  --secondary: oklch(0.958 0.007 250);
+  --secondary-foreground: oklch(0.3 0.045 264);
+  --muted: oklch(0.962 0.006 250);
+  --muted-foreground: oklch(0.505 0.024 260);
+  --accent: oklch(0.945 0.02 254);
+  --accent-foreground: oklch(0.32 0.08 262);
+  --destructive: oklch(0.577 0.215 27.3);
+  --destructive-foreground: oklch(0.985 0.004 248);
+  --success: oklch(0.62 0.14 155);
+  --warning: oklch(0.72 0.14 70);
+  --border: oklch(0.912 0.009 252);
+  --input: oklch(0.9 0.011 252);
+  --ring: oklch(0.546 0.195 262);
+  --chart-1: oklch(0.546 0.195 262);
+  --chart-2: oklch(0.62 0.14 200);
+  --chart-3: oklch(0.62 0.14 155);
+  --chart-4: oklch(0.72 0.14 70);
+  --chart-5: oklch(0.577 0.215 27.3);
+  --sidebar: oklch(0.975 0.005 250);
+  --sidebar-foreground: oklch(0.235 0.038 264);
+  --sidebar-primary: oklch(0.546 0.195 262);
+  --sidebar-primary-foreground: oklch(0.985 0.004 248);
+  --sidebar-accent: oklch(0.945 0.02 254);
+  --sidebar-accent-foreground: oklch(0.32 0.08 262);
+  --sidebar-border: oklch(0.912 0.009 252);
+  --sidebar-ring: oklch(0.546 0.195 262);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.175 0.022 264);
+  --foreground: oklch(0.955 0.006 250);
+  --card: oklch(0.215 0.026 264);
+  --card-foreground: oklch(0.955 0.006 250);
+  --popover: oklch(0.215 0.026 264);
+  --popover-foreground: oklch(0.955 0.006 250);
+  --primary: oklch(0.65 0.185 261);
+  --primary-foreground: oklch(0.16 0.03 264);
+  --secondary: oklch(0.27 0.03 264);
+  --secondary-foreground: oklch(0.93 0.01 252);
+  --muted: oklch(0.26 0.028 264);
+  --muted-foreground: oklch(0.72 0.02 256);
+  --accent: oklch(0.3 0.05 262);
+  --accent-foreground: oklch(0.93 0.02 254);
+  --destructive: oklch(0.66 0.19 25);
+  --destructive-foreground: oklch(0.16 0.03 264);
+  --success: oklch(0.7 0.14 155);
+  --warning: oklch(0.78 0.14 70);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.65 0.185 261);
+  --chart-1: oklch(0.65 0.185 261);
+  --chart-2: oklch(0.7 0.13 200);
+  --chart-3: oklch(0.7 0.13 155);
+  --chart-4: oklch(0.78 0.13 70);
+  --chart-5: oklch(0.66 0.19 25);
+  --sidebar: oklch(0.2 0.024 264);
+  --sidebar-foreground: oklch(0.955 0.006 250);
+  --sidebar-primary: oklch(0.65 0.185 261);
+  --sidebar-primary-foreground: oklch(0.16 0.03 264);
+  --sidebar-accent: oklch(0.3 0.05 262);
+  --sidebar-accent-foreground: oklch(0.93 0.02 254);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.65 0.185 261);
 }
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
+  --font-heading: var(--font-outfit);
+  --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -92,6 +106,9 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -119,22 +136,119 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    @apply font-sans;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 24%, transparent) transparent;
+  }
   body {
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-  }
-  html {
-    @apply font-sans;
+    caret-color: var(--primary);
   }
   ::selection {
-    background: color-mix(in srgb, var(--primary) 18%, transparent);
+    background: color-mix(in oklab, var(--primary) 22%, transparent);
+  }
+  /* Search inputs: hide the native clear button — the app renders its own themed X.
+     Re-applied to force recompile. */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-results-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Headings carry the display voice; body stays Geist. */
+  h1, h2, h3 {
+    font-family: var(--font-outfit), var(--font-geist-sans), sans-serif;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  /* Themed scrollbars (WebKit) — no browser defaults. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 22%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--foreground) 36%, transparent);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
 /* Tabular numerals for sizes, counts, and dates. */
 .tnum {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
+}
+
+/* Soft layered elevation, tinted by the ink — declared once. */
+.shadow-card {
+  box-shadow:
+    0 1px 2px oklch(0.235 0.038 264 / 0.05),
+    0 8px 24px oklch(0.235 0.038 264 / 0.07);
+}
+.shadow-lift {
+  box-shadow:
+    0 2px 4px oklch(0.235 0.038 264 / 0.06),
+    0 16px 40px oklch(0.235 0.038 264 / 0.11);
+}
+.dark .shadow-card {
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 0.3),
+    0 8px 24px oklch(0 0 0 / 0.25);
+}
+.dark .shadow-lift {
+  box-shadow:
+    0 2px 4px oklch(0 0 0 / 0.35),
+    0 16px 40px oklch(0 0 0 / 0.4);
+}
+
+/* Ambient hero wash: one radial depth field, never a flat ground. */
+.hero-wash {
+  background:
+    radial-gradient(52rem 30rem at 82% -6%, color-mix(in oklab, var(--primary) 11%, transparent), transparent 68%),
+    radial-gradient(40rem 26rem at -8% 12%, color-mix(in oklab, var(--chart-2) 8%, transparent), transparent 65%);
+}
+.dark .hero-wash {
+  background:
+    radial-gradient(52rem 30rem at 82% -6%, color-mix(in oklab, var(--primary) 16%, transparent), transparent 68%),
+    radial-gradient(40rem 26rem at -8% 12%, color-mix(in oklab, var(--chart-2) 10%, transparent), transparent 65%);
+}
+
+/* Capability marquee: one authored ambient motion, paused on hover. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  animation: marquee 38s linear infinite;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

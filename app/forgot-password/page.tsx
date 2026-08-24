@@ -3,7 +3,7 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon, CloudIcon, InfoIcon, KeyRoundIcon } from "lucide-react";
+import { ArrowLeftIcon, CloudIcon, InfoIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell from "@/components/AuthShell";
 import { Button } from "@/components/ui/button";
@@ -47,24 +47,20 @@ export default function ForgotPasswordPage() {
     <AuthShell
       left={
         <>
-          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <KeyRoundIcon className="size-3" />
-            Reset your password
-          </span>
-          <h1 className="mb-2 max-w-[24ch] font-heading text-2xl font-bold tracking-tight">
+          <h1 className="mb-3 max-w-[22ch] font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             Forgot your password?
           </h1>
-          <p className="mb-4 max-w-[44ch] text-sm text-muted-foreground">
+          <p className="mb-6 max-w-[44ch] leading-relaxed text-muted-foreground">
             Enter your account email and we will send a secure link so you can
             reset your password.
           </p>
 
-          <div className="rounded-xl border bg-card p-3">
+          <div className="shadow-card rounded-2xl border bg-card p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <InfoIcon className="size-3.5 text-muted-foreground" />
+              <InfoIcon className="size-4 text-primary" />
               How it works
             </div>
-            <ol className="list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
+            <ol className="list-decimal space-y-1 pl-4 text-sm leading-relaxed text-muted-foreground">
               <li>We send a one-time secure link to your email.</li>
               <li>The link is valid for a limited time (typically 1 hour).</li>
               <li>Follow the link to set a new password.</li>
@@ -74,11 +70,11 @@ export default function ForgotPasswordPage() {
       }
       card={
         <>
-          <div className="mb-4">
-            <span className="mb-3 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <CloudIcon className="size-4" />
+          <div className="mb-5">
+            <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
+              <CloudIcon className="size-5" />
             </span>
-            <h2 className="mb-1 font-heading text-xl font-bold tracking-tight">
+            <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Forgot password
             </h2>
             <p className="text-sm text-muted-foreground">

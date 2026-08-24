@@ -1,30 +1,25 @@
 // app/admin/page.tsx
+// Admin overview: real stats and charts drawn from the user base.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import {
   BanIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   CircleCheckIcon,
-  LogOutIcon,
-  SearchXIcon,
-  ShieldCheckIcon,
+  HardDriveIcon,
   ShieldIcon,
-  Trash2Icon,
+  UserIcon,
   UsersIcon,
 } from "lucide-react";
-import { useToast } from "@/components/ToastProvider";
-import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
-import AppNavbar from "@/components/AppNavbar";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { swrFetcher } from "@/components/SwrProvider";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface UserItem {
@@ -44,11 +39,10 @@ interface AdminUsersResponse {
   total: number;
   admins: number;
   banned: number;
-  nextCursor?: string | null;
 }
 
-function formatSize(bytes?: number | null) {
-  if (bytes === null || bytes === undefined || bytes <= 0) return "0 B";
+function formatSize(bytes: number) {
+  if (!bytes || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0;
   let value = bytes;
@@ -59,580 +53,227 @@ function formatSize(bytes?: number | null) {
   return `${value.toFixed(1)} ${units[i]}`;
 }
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-}
+const monthLabel = new Intl.DateTimeFormat("en-US", { month: "short" });
 
-function UserSkeletonRow() {
+const storageConfig = {
+  size: { label: "Storage used", color: "var(--chart-2)" },
+} satisfies ChartConfig;
+
+const signupsConfig = {
+  users: { label: "New users", color: "var(--chart-1)" },
+} satisfies ChartConfig;
+
+function StatSkeleton() {
   return (
-    <div className="flex items-center gap-3 py-2" aria-hidden="true">
-      <Skeleton className="size-10 rounded-lg" />
-      <div className="flex grow flex-col gap-2 py-1">
-        <Skeleton className="h-3 w-[30%]" />
-        <Skeleton className="h-2.5 w-[42%]" />
-      </div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-hidden="true">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Card key={i}>
+          <CardContent className="flex items-center gap-3">
+            <Skeleton className="size-10 rounded-xl" />
+            <div className="flex grow flex-col gap-1.5">
+              <Skeleton className="h-2.5 w-[60%]" />
+              <Skeleton className="h-5 w-[40%]" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }
 
-export default function AdminDashboard() {
-  const { showToast } = useToast()
-  const { confirm } = useConfirmDialog()
-
-  const [cursors, setCursors] = useState<(string | null)[]>([null]);
-  const cursor = cursors[cursors.length - 1];
-  const pageNumber = cursors.length;
-  const perPage = 10;
-
-  const [query, setQuery] = useState<string>("");
-  const [debouncedQuery, setDebouncedQuery] = useState<string>("");
-
-  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
-  const [batchLoading, setBatchLoading] = useState(false);
-
-  // Debounce pencarian agar tidak nembak API tiap ketikan.
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 400);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  // Ganti pencarian -> reset seleksi + kembali ke halaman pertama.
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-    } else {
-      setCursors((prev) => (prev.length === 1 ? prev : [null]));
-      setSelectedUsers(new Set());
-    }
-  }, [debouncedQuery]);
-
-  // ---- data via SWR: cache + dedupe otomatis antar navigasi ----
-  const params = new URLSearchParams({ limit: String(perPage) });
-  if (debouncedQuery) params.set("q", debouncedQuery);
-  if (cursor) params.set("cursor", cursor);
-  const { data, isLoading: loading, mutate: mutateUsers } = useSWR<AdminUsersResponse>(
-    `/api/admin/users?${params.toString()}`,
-    swrFetcher,
-    { keepPreviousData: true }
+export default function AdminOverview() {
+  // One call, wide limit: the overview needs the whole user base to compute honestly.
+  const { data, isLoading, error } = useSWR<AdminUsersResponse>(
+    "/api/admin/users?limit=500",
+    swrFetcher
   );
 
   const users: UserItem[] = data?.users ?? [];
   const total = data?.total ?? 0;
-  const hasNextPage = !!data?.nextCursor;
-  const lastPageApprox = Math.max(pageNumber, Math.ceil(total / perPage));
   const admins = data?.admins ?? 0;
   const banned = data?.banned ?? 0;
-  const verified = users.filter((u) => u.verified).length;
+  const verified = users.filter((u) => u.verified && !u.banned).length;
+  const unverified = users.filter((u) => !u.verified && !u.banned).length;
+  const totalBytes = users.reduce((sum, u) => sum + (u.totalSizeBytes ?? 0), 0);
+  const totalFiles = users.reduce((sum, u) => sum + (u.fileCount ?? 0), 0);
 
-  function toggleSelectAll(checked: boolean | "indeterminate") {
-    const selectableIds = users.filter((u) => u.role === "USER").map((u) => u.id);
+  // Storage per user, top consumers first.
+  const storageData = users
+    .filter((u) => (u.totalSizeBytes ?? 0) > 0)
+    .sort((a, b) => (b.totalSizeBytes ?? 0) - (a.totalSizeBytes ?? 0))
+    .slice(0, 6)
+    .map((u) => ({
+      name: u.name,
+      size: Math.round(((u.totalSizeBytes ?? 0) / (1024 * 1024)) * 10) / 10, // MB
+      formatted: formatSize(u.totalSizeBytes ?? 0),
+    }));
 
-    setSelectedUsers((prev) => {
-      const next = new Set(prev);
-      for (const id of selectableIds) {
-        if (checked) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
+  // Signups per month, last six months.
+  const now = new Date();
+  const months: { month: string; users: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ month: monthLabel.format(d), users: 0 });
+  }
+  for (const u of users) {
+    const d = new Date(u.createdAt);
+    const diff =
+      (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+    if (diff >= 0 && diff < 6) months[5 - diff].users += 1;
   }
 
-  async function banUser(id: string) {
-    const ok = await confirm({
-      title: "Ban this user?",
-      description: "Banning will prevent this user from logging in. You can unban later.",
-      confirmLabel: "Ban user",
-      cancelLabel: "Cancel",
-      danger: true,
-    });
-
-    if (!ok) return;
-
-    try {
-      const res = await fetch(`/api/admin/users/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ banned: true }),
-        credentials: "same-origin",
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        showToast("error", data?.message || "Failed to ban user");
-        return;
-      }
-
-      showToast("success", "User banned successfully");
-      await mutateUsers();
-    } catch (e) {
-      console.error("ban error", e);
-      showToast("error", "An error occurred while banning user");
-    }
-  }
-
-  async function unbanUser(id: string) {
-    const ok = await confirm({
-      title: "Unban this user?",
-      description: "Restore access for this user?",
-      confirmLabel: "Unban user",
-      cancelLabel: "Cancel",
-      danger: false,
-    });
-
-    if (!ok) return;
-
-    try {
-      const res = await fetch(`/api/admin/users/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ banned: false }),
-        credentials: "same-origin",
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        showToast("error", data?.message || "Failed to unban user");
-        return;
-      }
-
-      showToast("success", "User unbanned successfully");
-      await mutateUsers();
-    } catch (e) {
-      console.error("unban error", e);
-      showToast("error", "An error occurred while unbanning user");
-    }
-  }
-
-  async function deleteUser(id: string) {
-    const ok = await confirm({
-      title: "Delete this user?",
-      description: "This will permanently delete the user and all their files. This action cannot be undone.",
-      confirmLabel: "Delete user",
-      cancelLabel: "Cancel",
-      danger: true,
-    });
-
-    if (!ok) return;
-
-    try {
-      const res = await fetch(`/api/admin/users/${id}`, {
-        method: "DELETE",
-        credentials: "same-origin",
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        showToast("error", data?.message || "Failed to delete user");
-        return;
-      }
-
-      showToast("success", "User deleted successfully");
-      // Jika ini baris terakhir di halaman > 1, mundur satu halaman.
-      if (users.length === 1 && pageNumber > 1) setCursors((prev) => prev.slice(0, -1));
-      else await mutateUsers();
-    } catch (e) {
-      console.error("delete error", e);
-      showToast("error", "An error occurred while deleting user");
-    }
-  }
-
-  async function runBatch(
-    method: "PATCH" | "DELETE",
-    successMessage: string,
-    body: Record<string, unknown>
-  ) {
-    setBatchLoading(true);
-    try {
-      const res = await fetch("/api/admin/users/batch", {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        credentials: "same-origin",
-      });
-
-      if (res.ok) {
-        showToast("success", successMessage);
-        setSelectedUsers(new Set());
-        await mutateUsers();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        showToast("error", data.message || "Batch operation failed");
-      }
-    } catch (e) {
-      console.error("batch error", e);
-      showToast("error", "An error occurred during the batch operation");
-    } finally {
-      setBatchLoading(false);
-    }
-  }
-
-  async function handleBatchBan() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to ban");
-      return;
-    }
-    const ids = Array.from(selectedUsers);
-    const ok = await confirm({
-      title: `Ban ${ids.length} user(s)?`,
-      description: `This will ban ${ids.length} selected user(s).`,
-      confirmLabel: "Ban selected",
-      cancelLabel: "Cancel",
-      danger: true,
-    });
-    if (!ok) return;
-    await runBatch("PATCH", `${ids.length} user(s) banned successfully`, { ids, banned: true });
-  }
-
-  async function handleBatchUnban() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to unban");
-      return;
-    }
-    const ids = Array.from(selectedUsers);
-    const ok = await confirm({
-      title: `Unban ${ids.length} user(s)?`,
-      description: `This will unban ${ids.length} selected user(s).`,
-      confirmLabel: "Unban selected",
-      cancelLabel: "Cancel",
-      danger: false,
-    });
-    if (!ok) return;
-    await runBatch("PATCH", `${ids.length} user(s) unbanned successfully`, { ids, banned: false });
-  }
-
-  async function handleBatchDelete() {
-    if (selectedUsers.size === 0) {
-      showToast("warning", "Please select at least one user to delete");
-      return;
-    }
-    const ids = Array.from(selectedUsers);
-    const ok = await confirm({
-      title: `Delete ${ids.length} user(s)?`,
-      description: `This will permanently delete ${ids.length} selected user(s) and their files.`,
-      confirmLabel: "Delete selected",
-      cancelLabel: "Cancel",
-      danger: true,
-    });
-    if (!ok) return;
-    if (ids.length >= users.length && pageNumber > 1) setCursors((prev) => prev.slice(0, -1));
-    await runBatch("DELETE", `${ids.length} user(s) deleted successfully`, { ids });
-  }
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
-    window.location.href = "/login";
-  }
-
-  const firstItem = total === 0 ? 0 : (pageNumber - 1) * perPage + 1;
-  const lastItem = Math.min(pageNumber * perPage, total);
-
-  const selectableUsers = users.filter((u) => u.role === "USER");
-  const selectableIds = selectableUsers.map((u) => u.id);
-  const allSelectableSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedUsers.has(id));
-  const someSelectableSelected = selectableIds.some((id) => selectedUsers.has(id)) && !allSelectableSelected;
-
-  const stats: { label: string; value: number; icon: React.ElementType; tone?: string }[] = [
-    { label: "Total users", value: total, icon: UsersIcon },
-    { label: "Admins", value: admins, icon: ShieldIcon },
-    { label: "Verified", value: verified, icon: CircleCheckIcon, tone: "text-emerald-600 dark:text-emerald-400" },
-    { label: "Banned", value: banned, icon: BanIcon, tone: "text-destructive" },
+  const stats = [
+    { label: "Total users", value: String(total), hint: `${totalFiles} files stored`, icon: UsersIcon, tone: "text-foreground", tint: "bg-primary/10 text-primary" },
+    { label: "Verified", value: String(verified), hint: `${unverified} awaiting verification`, icon: CircleCheckIcon, tone: "text-success", tint: "bg-success/10 text-success" },
+    { label: "Banned", value: String(banned), hint: banned > 0 ? "Cannot sign in" : "No banned accounts", icon: BanIcon, tone: "text-destructive", tint: "bg-destructive/10 text-destructive" },
+    { label: "Admins", value: String(admins), hint: "Protected accounts", icon: ShieldIcon, tone: "text-foreground", tint: "bg-accent text-accent-foreground" },
+    { label: "Storage used", value: formatSize(totalBytes), hint: `across ${total} accounts`, icon: HardDriveIcon, tone: "text-foreground", tint: "bg-chart-2/15 text-chart-2" },
   ];
 
   return (
     <main className="min-h-dvh">
-      <AppNavbar
-        title="Admin dashboard"
-        brandHref="/admin"
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search users...",
-        }}
-      >
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          <LogOutIcon data-icon="inline-start" />
-          <span className="hidden sm:inline">Logout</span>
-        </Button>
-      </AppNavbar>
-
       <div className="mx-auto w-full max-w-6xl px-4 py-8">
         <div className="mb-6">
-          <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <ShieldIcon className="size-3" />
-            Admin space
-          </span>
-          <h1 className="font-heading text-2xl font-bold tracking-tight">User management</h1>
-          <p className="text-sm text-muted-foreground">
-            View all registered users, ban or unban suspicious accounts, and remove user data when needed.
+          <h1 className="font-heading text-3xl font-semibold tracking-tight">Overview</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The state of your storage service, computed from live account data.
           </p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-4">
-          {/* Overview panel */}
-          <Card className="h-full lg:col-span-1">
-            <CardHeader>
-              <CardTitle>Overview</CardTitle>
-              <CardDescription>Quick glance of your user base.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4 grid grid-cols-2 gap-2">
-                {stats.map((stat) => (
-                  <div key={stat.label} className="rounded-xl border bg-muted/40 p-2.5">
-                    <div className={`flex items-center gap-1 text-[0.7rem] text-muted-foreground ${stat.tone ?? ""}`}>
-                      <stat.icon className="size-3" />
-                      {stat.label}
-                    </div>
-                    <div className={`tnum mt-0.5 text-lg font-bold tracking-tight ${stat.tone ?? ""}`}>
-                      {stat.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
-                · Only regular users can be banned or deleted.
-              </p>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                · Admin accounts are protected to avoid losing access.
-              </p>
+        {isLoading ? (
+          <StatSkeleton />
+        ) : error ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              Could not load admin data. Refresh the page to try again.
             </CardContent>
           </Card>
+        ) : (
+          <div className="space-y-4">
+            {/* Stat strip */}
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              {stats.map((stat) => (
+                <Card key={stat.label}>
+                  <CardContent className="flex items-center gap-3">
+                    <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${stat.tint}`}>
+                      <stat.icon className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
+                      <p className={`tnum truncate text-xl font-semibold tracking-tight ${stat.tone}`}>
+                        {stat.value}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
 
-          {/* Users panel */}
-          <Card className="h-full lg:col-span-3">
-            <CardHeader className="flex-row items-start justify-between gap-3">
-              <div>
-                <CardTitle>Users</CardTitle>
-                <CardDescription>Manage roles, ban/unban users, and remove accounts.</CardDescription>
-              </div>
-              <Badge variant="secondary" className="tnum shrink-0">
-                {total} {total === 1 ? "user" : "users"}
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              {selectableUsers.length > 0 && (
-                <div
-                  className={`rounded-xl border p-3 transition-colors ${
-                    selectedUsers.size > 0 ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-3">
-                    <label className="flex cursor-pointer items-center gap-2 text-sm">
-                      <Checkbox
-                        id="selectAll"
-                        checked={allSelectableSelected}
-                        indeterminate={someSelectableSelected}
-                        onCheckedChange={(checked) => toggleSelectAll(checked)}
+            {/* Charts */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>New users by month</CardTitle>
+                  <CardDescription>Registrations over the last six months.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={signupsConfig} className="h-56 w-full">
+                    <BarChart data={months}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis
+                        dataKey="month"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
                       />
-                      Select all users on this page
-                    </label>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="users" fill="var(--color-users)" radius={6} isAnimationActive={false} />
+                    </BarChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
 
-                    {selectedUsers.size > 0 && (
-                      <>
-                        <Badge className="tnum">{selectedUsers.size} selected</Badge>
-                        <Button variant="outline" size="sm" onClick={() => setSelectedUsers(new Set())}>
-                          Clear all
-                        </Button>
-                        <div className="ms-auto flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400"
-                            onClick={handleBatchBan}
-                            disabled={batchLoading}
-                          >
-                            <BanIcon data-icon="inline-start" />
-                            Ban selected
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600 dark:text-emerald-400"
-                            onClick={handleBatchUnban}
-                            disabled={batchLoading}
-                          >
-                            <CircleCheckIcon data-icon="inline-start" />
-                            Unban selected
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={handleBatchDelete} disabled={batchLoading}>
-                            <Trash2Icon data-icon="inline-start" />
-                            Delete selected
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Storage per user</CardTitle>
+                  <CardDescription>
+                    Top consumers, in megabytes. {totalFiles} files stored in total.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {storageData.length === 0 ? (
+                    <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
+                      No files stored yet — the chart fills in as users upload.
+                    </div>
+                  ) : (
+                    <ChartContainer config={storageConfig} className="h-56 w-full">
+                      <BarChart data={storageData} layout="vertical" margin={{ left: 12 }}>
+                        <CartesianGrid horizontal={false} />
+                        <XAxis
+                          type="number"
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={8}
+                          tickFormatter={(v: number) => `${v} MB`}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          tickLine={false}
+                          axisLine={false}
+                          width={90}
+                          tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
+                        />
+                        <ChartTooltip
+                          content={<ChartTooltipContent formatter={(_v, _n, item) => item?.payload?.formatted} />}
+                        />
+                        <Bar dataKey="size" fill="var(--color-size)" radius={6} isAnimationActive={false} />
+                      </BarChart>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
 
-              {loading && users.length === 0 ? (
-                <div className="flex flex-col gap-1 pt-4">
-                  <UserSkeletonRow />
-                  <UserSkeletonRow />
-                  <UserSkeletonRow />
-                </div>
-              ) : users.length === 0 ? (
-                <Empty className="mt-4 border border-dashed">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      {debouncedQuery ? <SearchXIcon /> : <UsersIcon />}
-                    </EmptyMedia>
-                    <EmptyTitle>{debouncedQuery ? "No users match your search" : "No users yet"}</EmptyTitle>
-                    <EmptyDescription>
-                      {debouncedQuery
-                        ? `Nothing found for “${debouncedQuery}”. Try a different keyword.`
-                        : "New registrations will appear here."}
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <>
-                  <div className={`mt-4 flex flex-col gap-2 transition-opacity ${loading ? "opacity-50" : ""}`}>
-                    {users.map((u) => (
+            {/* Latest signups */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Latest signups</CardTitle>
+                <CardDescription>The five most recent accounts.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-2">
+                  {users
+                    .slice()
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .slice(0, 5)
+                    .map((u) => (
                       <div
                         key={u.id}
-                        className={`flex flex-col gap-3 rounded-xl border p-3 transition-colors md:flex-row md:items-center ${
-                          u.role === "ADMIN" ? "opacity-90" : "hover:bg-muted/40"
-                        }`}
+                        className="flex items-center gap-3 rounded-xl border p-2.5 transition-colors hover:bg-muted/40"
                       >
-                        <div className="flex items-center gap-3 md:pt-0">
-                          {u.role === "USER" ? (
-                            <Checkbox
-                              aria-label={`Select ${u.name}`}
-                              checked={selectedUsers.has(u.id)}
-                              onCheckedChange={() => {
-                                setSelectedUsers((prev) => {
-                                  const newSet = new Set(prev);
-                                  if (newSet.has(u.id)) newSet.delete(u.id);
-                                  else newSet.add(u.id);
-                                  return newSet;
-                                });
-                              }}
-                            />
-                          ) : (
-                            <span className="size-4" aria-hidden="true" />
-                          )}
-
-                          <Avatar className="size-10">
-                            <AvatarFallback>{getInitials(u.name)}</AvatarFallback>
-                          </Avatar>
-                        </div>
-
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground">
+                          <UserIcon className="size-4" />
+                        </span>
                         <div className="min-w-0 grow">
-                          <div className="flex flex-wrap items-center gap-2 font-semibold">
-                            <span className="truncate">{u.name}</span>
-                            {u.banned && <Badge variant="destructive">Banned</Badge>}
-                            {u.role === "ADMIN" && <Badge>Admin</Badge>}
-                            {u.role === "USER" &&
-                              (u.verified ? (
-                                <Badge variant="secondary">Verified</Badge>
-                              ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="border-amber-500/40 text-amber-600 dark:text-amber-400"
-                                >
-                                  Unverified
-                                </Badge>
-                              ))}
-                          </div>
-
-                          <div className="truncate text-sm text-muted-foreground">{u.email.toLowerCase()}</div>
-
-                          {u.role !== "ADMIN" ? (
-                            <div className="tnum text-xs text-muted-foreground">
-                              {typeof u.fileCount === "number" ? `${u.fileCount} ${u.fileCount === 1 ? "file" : "files"}` : ""}
-                              {typeof u.fileCount === "number" && typeof u.totalSizeBytes === "number" ? " · " : ""}
-                              {typeof u.totalSizeBytes === "number" ? formatSize(u.totalSizeBytes) : ""}
-                              {" · "}
-                              Joined {new Date(u.createdAt).toLocaleDateString("en-US")}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-muted-foreground">
-                              Joined {new Date(u.createdAt).toLocaleDateString("en-US")}
-                            </div>
-                          )}
+                          <p className="truncate text-sm font-medium">
+                            {u.name}
+                            {u.role === "ADMIN" && (
+                              <span className="ms-2 text-xs font-normal text-muted-foreground">admin</span>
+                            )}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">{u.email.toLowerCase()}</p>
                         </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          {u.role === "USER" ? (
-                            <>
-                              {u.banned ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600 dark:text-emerald-400"
-                                  onClick={() => unbanUser(u.id)}
-                                >
-                                  Unban
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400"
-                                  onClick={() => banUser(u.id)}
-                                >
-                                  Ban
-                                </Button>
-                              )}
-                              <Button variant="destructive" size="sm" onClick={() => deleteUser(u.id)}>
-                                Delete
-                              </Button>
-                            </>
-                          ) : (
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <ShieldCheckIcon className="size-3.5" />
-                              Protected
-                            </span>
-                          )}
-                        </div>
+                        <span className="tnum shrink-0 text-xs text-muted-foreground">
+                          Joined {new Date(u.createdAt).toLocaleDateString("en-US")}
+                        </span>
                       </div>
                     ))}
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="tnum text-sm text-muted-foreground">
-                      Showing {firstItem}–{lastItem} of {total}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        onClick={() => setCursors((prev) => prev.slice(0, -1))}
-                        disabled={pageNumber <= 1}
-                        aria-label="Previous page"
-                      >
-                        <ChevronLeftIcon />
-                      </Button>
-
-                      <div className="tnum min-w-[90px] text-center text-sm text-muted-foreground">
-                        Page {pageNumber} of {lastPageApprox}
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        onClick={() => setCursors((prev) => [...prev, data?.nextCursor ?? null])}
-                        disabled={!hasNextPage}
-                        aria-label="Next page"
-                      >
-                        <ChevronRightIcon />
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </main>
   );

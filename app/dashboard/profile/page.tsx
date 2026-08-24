@@ -9,7 +9,6 @@ import {
   ArrowLeftIcon,
   LogOutIcon,
   MailIcon,
-  UserIcon,
 } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
@@ -256,14 +255,10 @@ function ProfilePageContent() {
 
       <div className="mx-auto w-full max-w-6xl px-4 py-8">
         <div className="mb-6">
-          <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <UserIcon className="size-3" />
-            Account settings
-          </span>
-          <h1 className="font-heading text-2xl font-bold tracking-tight">
+          <h1 className="font-heading text-3xl font-semibold tracking-tight">
             Profile &amp; security
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Update your personal information and manage your password.
           </p>
         </div>
@@ -303,11 +298,9 @@ function ProfilePageContent() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Status</span>
                     {profile.verified ? (
-                      <Badge variant="secondary">Verified</Badge>
+                      <Badge variant="success">Verified</Badge>
                     ) : (
-                      <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
-                        Unverified
-                      </Badge>
+                      <Badge variant="warning">Unverified</Badge>
                     )}
                   </div>
                   <div className="tnum flex justify-between">

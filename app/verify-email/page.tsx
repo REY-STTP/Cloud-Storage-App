@@ -88,7 +88,7 @@ function VerifyEmailPageContent() {
               <div
                 className={`mx-auto mb-3 flex size-11 items-center justify-center rounded-full ${
                   status === "success"
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    ? "bg-success/10 text-success"
                     : "bg-destructive/10 text-destructive"
                 }`}
               >
@@ -101,7 +101,7 @@ function VerifyEmailPageContent() {
               <p
                 className={`rounded-lg border px-3 py-2 text-sm ${
                   status === "success"
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    ? "border-success/30 bg-success/10 text-success"
                     : "border-destructive/30 bg-destructive/10 text-destructive"
                 }`}
               >
