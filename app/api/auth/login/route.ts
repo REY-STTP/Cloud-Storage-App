@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
+import { query } from "@/lib/db";
 import { comparePassword, signJwt } from "@/lib/auth";
+import type { UserRow } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = await req.json();
-    await connectDB();
 
-    const user = await User.findOne({ email });
+    const result = await query<UserRow>(
+      "select * from users where email = $1 limit 1",
+      [email]
+    );
+    const user = result.rows[0];
+
     if (!user) {
       return NextResponse.json({ message: "Incorrect email or password." }, { status: 401 });
     }
@@ -22,10 +26,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Incorrect email or password." }, { status: 401 });
     }
 
-    const token = signJwt({ userId: user._id.toString(), role: user.role });
+    const token = signJwt({ userId: user.id, role: user.role });
 
     const res = NextResponse.json({
-      id: user._id.toString(),
+      id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,

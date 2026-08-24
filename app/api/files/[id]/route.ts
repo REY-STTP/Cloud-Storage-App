@@ -1,50 +1,21 @@
 // app/api/files/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { File as FileModel } from "@/models/File";
+import { query } from "@/lib/db";
 import { verifyJwt } from "@/lib/auth";
-import { v2 as cloudinary } from "cloudinary";
+import { getUserById } from "@/lib/users";
+import { deleteObject, getDownloadUrl } from "@/lib/storage";
+import type { FileRow } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
+const FILE_SELECT = `select id, filename, original_name as "originalName", mime_type as "mimeType",
+        resource_type as "resourceType", url, public_id as "publicId",
+        size, owner, created_at as "createdAt", updated_at as "updatedAt"
+ from files where id = $1 and owner = $2 limit 1`;
 
-async function safeDestroy(publicId: string, file?: any) {
-  const mime = (file && (file.mimeType || file.mime_type || file.format || file.type)) || "";
-  const tryList: string[] = [];
-
-  if (mime) {
-    const m = String(mime).toLowerCase();
-    if (m.startsWith("image/")) tryList.push("image");
-    else if (m.startsWith("video/")) tryList.push("video");
-    else if (m.includes("javascript")) tryList.push("javascript");
-    else if (m.includes("css")) tryList.push("css");
-    else tryList.push("raw");
-  }
-
-  ["raw", "image", "video", "javascript", "css"].forEach((t) => {
-    if (!tryList.includes(t)) tryList.push(t);
-  });
-
-  let lastErr: any = null;
-  for (const resource_type of tryList) {
-    try {
-      const res = await cloudinary.uploader.destroy(publicId, { resource_type });
-      return { ok: true, result: res, resource_type };
-    } catch (err: any) {
-      lastErr = err;
-      const msg = err?.message || "";
-      if (err?.http_code === 400 && msg.includes("Invalid resource type")) {
-        continue;
-      }
-      return { ok: false, error: String(err), resource_type };
-    }
-  }
-  return { ok: false, error: String(lastErr) || "destroy failed", resource_type: null };
+/** Guard: valid uuid format for Postgres. */
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 export async function GET(
@@ -60,19 +31,28 @@ export async function GET(
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
-  const file = await FileModel.findById(id);
-
-  if (!file || file.owner.toString() !== payload.userId) {
+  if (!isUuid(id)) {
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  if (file.url) {
-    return NextResponse.redirect(file.url);
+  const result = await query<FileRow>(FILE_SELECT, [id, payload.userId]);
+  const file = result.rows[0];
+
+  if (!file || !file.publicId) {
+    return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ message: "File URL not available" }, { status: 404 });
+  // Bucket R2 privat: buat link download presigned yang berlaku terbatas.
+  try {
+    const downloadUrl = await getDownloadUrl(file.publicId);
+    return NextResponse.redirect(downloadUrl);
+  } catch (err) {
+    console.error("Failed to create download URL:", err);
+    return NextResponse.json(
+      { message: "File storage is not configured. Please contact the administrator." },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PATCH(
@@ -88,25 +68,39 @@ export async function PATCH(
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
   const body = await req.json().catch(() => ({}));
   const filename = body?.filename;
   if (!filename || typeof filename !== "string") {
     return NextResponse.json({ message: "Invalid filename" }, { status: 400 });
   }
 
-  const file = await FileModel.findById(id);
-
-  if (!file || file.owner.toString() !== payload.userId) {
+  if (!isUuid(id)) {
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  file.filename = filename;
-  await file.save();
+  // Banned users keep read access until their token expires, but may not
+  // modify anything.
+  const actor = await getUserById(payload.userId);
+  if (!actor) {
+    return NextResponse.json({ message: "User not found" }, { status: 404 });
+  }
+  if (actor.banned) {
+    return NextResponse.json({ message: "Your account has been banned" }, { status: 403 });
+  }
+
+  const updated = await query<FileRow>(
+    `update files set filename = $3 where id = $1 and owner = $2
+     returning id, filename, created_at as "createdAt"`,
+    [id, payload.userId, filename]
+  );
+  const file = updated.rows[0];
+
+  if (!file) {
+    return NextResponse.json({ message: "Not found" }, { status: 404 });
+  }
 
   return NextResponse.json({
-    id: file._id.toString(),
+    id: file.id,
     filename: file.filename,
     createdAt: file.createdAt,
   });
@@ -125,40 +119,53 @@ export async function DELETE(
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
-  const file = await FileModel.findById(id);
-
-  if (!file || file.owner.toString() !== payload.userId) {
+  if (!isUuid(id)) {
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  if (!file.publicId) {
-    await file.deleteOne();
-    return NextResponse.json({ message: "Deleted (no cloud resource)" });
+  const actor = await getUserById(payload.userId);
+  if (!actor) {
+    return NextResponse.json({ message: "User not found" }, { status: 404 });
+  }
+  if (actor.banned) {
+    return NextResponse.json({ message: "Your account has been banned" }, { status: 403 });
   }
 
-  try {
-    const r = await safeDestroy(file.publicId, file);
-    if (!r.ok) {
-      console.warn("Failed to delete from Cloudinary:", r);
-      await file.deleteOne();
-      return NextResponse.json({
-        message: "Deleted (cloud delete failed)",
-        cloudinaryError: r.error,
-        resource_type: r.resource_type,
-      }, { status: 200 });
-    } else {
-      await file.deleteOne();
-      return NextResponse.json({
-        message: "Deleted",
-        cloudinaryResult: r.result,
-        resource_type: r.resource_type,
-      });
-    }
-  } catch (err) {
-    console.warn("Unexpected error deleting from Cloudinary:", err);
-    try { await file.deleteOne(); } catch (_) {}
-    return NextResponse.json({ message: "Deleted (cloud delete encountered unexpected error)" }, { status: 200 });
+  const result = await query<FileRow>(FILE_SELECT, [id, payload.userId]);
+  const file = result.rows[0];
+
+  if (!file) {
+    return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
+
+  async function deleteRow() {
+    await query("delete from files where id = $1 and owner = $2", [id, payload!.userId]);
+  }
+
+  if (!file.publicId) {
+    await deleteRow();
+    return NextResponse.json({ message: "Deleted (no stored object)" });
+  }
+
+  let objectDeleted = true;
+  let objectError: unknown = null;
+  try {
+    await deleteObject(file.publicId);
+  } catch (err) {
+    console.warn(`Failed to delete ${file.publicId} from storage:`, err);
+    objectDeleted = false;
+    objectError = err instanceof Error ? err.message : String(err);
+  }
+
+  // Hapus baris DB meskipun objek gagal dihapus — data tidak boleh nyangkut.
+  await deleteRow();
+
+  if (!objectDeleted) {
+    return NextResponse.json({
+      message: "Deleted (storage cleanup failed)",
+      storageError: objectError,
+    }, { status: 200 });
+  }
+
+  return NextResponse.json({ message: "Deleted" });
 }

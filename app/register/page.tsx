@@ -3,11 +3,18 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { CloudIcon, FolderIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
+import AuthShell from "@/components/AuthShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { showToast } = useToast()
+  const { showToast } = useToast();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,132 +75,138 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
-      <div className="max-w-5xl w-full grid gap-10 md:grid-cols-2 items-center">
-        <section className="d-none d-md-block">
-          <div className="mb-3">
-            <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] shadow-sm">
-              Get started 🚀
-            </span>
-          </div>
-          <h1 className="fw-bold fs-3 mb-2">Create your cloud storage account</h1>
-          <p className="text-muted small mb-3">
+    <AuthShell
+      left={
+        <>
+          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+            <FolderIcon className="size-3" />
+            Get started
+          </span>
+          <h1 className="mb-2 max-w-[24ch] font-heading text-2xl font-bold tracking-tight">
+            Create your cloud storage account
+          </h1>
+          <p className="mb-4 max-w-[44ch] text-sm text-muted-foreground">
             Register as a user to upload and manage your files in a simple
             dashboard. You can rename, download, and delete files anytime.
           </p>
 
-          <div className="row g-2 text-muted small">
-            <div className="col-12">
-              <div className="landing-mini-card rounded-3 p-3 h-100">
-                <div className="fw-semibold mb-1">🗂️ User dashboard</div>
-                <div>
-                  Drag-free interface to upload multiple files, rename them,
-                  and download them back when needed.
-                </div>
+          <div className="flex gap-3 rounded-xl border bg-card p-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground">
+              <FolderIcon className="size-4" />
+            </span>
+            <div>
+              <div className="text-sm font-semibold">User dashboard</div>
+              <div className="text-sm text-muted-foreground">
+                Upload multiple files, rename them, and download them back
+                whenever you need.
               </div>
             </div>
           </div>
-        </section>
+        </>
+      }
+      card={
+        <>
+          <div className="mb-4">
+            <span className="mb-3 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <CloudIcon className="size-4" />
+            </span>
+            <h2 className="mb-1 font-heading text-xl font-bold tracking-tight">
+              Register
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Fill in your details to create a new account.
+            </p>
+          </div>
 
-        <section className="d-flex justify-content-center">
-          <div
-            className="card landing-card shadow-2xl border-0 w-100"
-            style={{ maxWidth: 420 }}
-          >
-            <div className="card-body">
-              <div className="d-flex flex-column align-items-center mb-3">
-                <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs mb-2 font-medium uppercase tracking-[0.15em] shadow-sm">
-                  Join the workspace
-                </span>
-                <h2 className="card-title mb-1 text-center fw-bold">Register</h2>
-                <p className="text-muted small mb-0 text-center">
-                  Fill in your details to create a new account.
-                </p>
+          <form onSubmit={handleSubmit}>
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="register-name">Name</Label>
+                <Input
+                  id="register-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Full name"
+                  required
+                />
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <div className="mb-3">
-                  <label className="form-label">Name</label>
-                  <input
-                    className="form-control"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Full Name"
+              <div className="grid gap-2">
+                <Label htmlFor="register-email">Email</Label>
+                <Input
+                  id="register-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="register-password">Password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="register-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
                     required
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </Button>
                 </div>
+              </div>
 
-                <div className="mb-3">
-                  <label className="form-label">Email</label>
-                  <input
-                    className="form-control"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value.toLowerCase())}
-                    placeholder="you@example.com"
+              <div className="grid gap-2">
+                <Label htmlFor="register-confirm">Confirm password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="register-confirm"
+                    type={showConfirm ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat password"
                     required
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowConfirm((prev) => !prev)}
+                  >
+                    {showConfirm ? "Hide" : "Show"}
+                  </Button>
                 </div>
+              </div>
+            </div>
 
-                <div className="mb-3">
-                  <label className="form-label">Password</label>
-                  <div className="input-group">
-                    <input
-                      className="form-control"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Minimum 6 characters"
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                    >
-                      {showPassword ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Confirm Password</label>
-                  <div className="input-group">
-                    <input
-                      className="form-control"
-                      type={showConfirm ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Repeat password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setShowConfirm((prev) => !prev)}
-                    >
-                      {showConfirm ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100 mt-1"
-                  disabled={loading}
-                >
-                  {loading ? "Loading..." : "Register"}
-                </button>
-              </form>
-
-              <p className="mt-3 text-center text-muted small">
-                Already have an account? <a href="/login">Login</a>
+            {error && (
+              <p className="mt-3 text-sm text-destructive" role="alert">
+                {error}
               </p>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+            )}
+
+            <Button type="submit" disabled={loading} className="mt-4 w-full">
+              {loading && <Spinner data-icon="inline-start" />}
+              {loading ? "Creating account..." : "Register"}
+            </Button>
+          </form>
+
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary hover:underline">
+              Login
+            </Link>
+          </p>
+        </>
+      }
+    />
   );
 }

@@ -1,9 +1,8 @@
 // app/api/user/storage/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
+import { query } from "@/lib/db";
 import { verifyJwt } from "@/lib/auth";
-import { File as FileModel } from "@/models/File";
-import { Types } from "mongoose";
+import { jsonNoStore } from "@/lib/http";
 
 const MAX_STORAGE_BYTES =
   Number(process.env.MAX_STORAGE_BYTES ?? 1073741824);
@@ -16,21 +15,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
+  const result = await query<{ totalSize: number }>(
+    // sum() over bigint returns numeric, which pg would hand back as a string;
+    // the ::bigint cast lets the int8 parser in lib/db.ts return a real number.
+    'select coalesce(sum(size), 0)::bigint as "totalSize" from files where owner = $1',
+    [payload.userId]
+  );
 
-  const agg = await FileModel.aggregate([
-    { $match: { owner: new Types.ObjectId(payload.userId) } },
-    { $group: { _id: null, totalSize: { $sum: "$size" } } },
-  ]);
-
-  const usedBytes = agg[0]?.totalSize ?? 0;
+  const usedBytes = Number(result.rows[0]?.totalSize ?? 0);
   const remainingBytes = Math.max(0, MAX_STORAGE_BYTES - usedBytes);
   const usedPercent =
     MAX_STORAGE_BYTES > 0
       ? Math.min(100, Math.round((usedBytes / MAX_STORAGE_BYTES) * 100))
       : 0;
 
-  return NextResponse.json({
+  return jsonNoStore({
     usedBytes,
     remainingBytes,
     maxBytes: MAX_STORAGE_BYTES,

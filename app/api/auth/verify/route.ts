@@ -1,7 +1,6 @@
 // app/api/auth/verify/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
+import { query } from "@/lib/db";
 import jwt from "jsonwebtoken";
 import { verifyToken } from "@/lib/mail";
 
@@ -9,7 +8,6 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
     const body = await req.json().catch(() => ({}));
     const token = (body.token || "").toString();
 
@@ -32,7 +30,11 @@ export async function POST(req: NextRequest) {
     }
 
     const email = decoded.email;
-    const user = await User.findOne({ email }).exec();
+    const result = await query<{ verified: boolean }>(
+      "select verified from users where email = $1 limit 1",
+      [email]
+    );
+    const user = result.rows[0];
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
@@ -41,8 +43,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Already verified" }, { status: 200 });
     }
 
-    user.verified = true;
-    await user.save();
+    await query("update users set verified = true where email = $1", [email]);
 
     return NextResponse.json({ message: "Email verified successfully" });
   } catch (err) {

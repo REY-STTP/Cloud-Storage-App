@@ -1,9 +1,31 @@
 // app/admin/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
+import {
+  BanIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CircleCheckIcon,
+  LogOutIcon,
+  SearchXIcon,
+  ShieldCheckIcon,
+  ShieldIcon,
+  Trash2Icon,
+  UsersIcon,
+} from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
+import AppNavbar from "@/components/AppNavbar";
+import { swrFetcher } from "@/components/SwrProvider";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface UserItem {
   id: string;
@@ -15,6 +37,14 @@ interface UserItem {
   createdAt: string;
   fileCount?: number | null;
   totalSizeBytes?: number | null;
+}
+
+interface AdminUsersResponse {
+  users: UserItem[];
+  total: number;
+  admins: number;
+  banned: number;
+  nextCursor?: string | null;
 }
 
 function formatSize(bytes?: number | null) {
@@ -29,140 +59,89 @@ function formatSize(bytes?: number | null) {
   return `${value.toFixed(1)} ${units[i]}`;
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function UserSkeletonRow() {
+  return (
+    <div className="flex items-center gap-3 py-2" aria-hidden="true">
+      <Skeleton className="size-10 rounded-lg" />
+      <div className="flex grow flex-col gap-2 py-1">
+        <Skeleton className="h-3 w-[30%]" />
+        <Skeleton className="h-2.5 w-[42%]" />
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const { showToast } = useToast()
   const { confirm } = useConfirmDialog()
 
-  const [users, setUsers] = useState<UserItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const [page, setPage] = useState<number>(1);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const cursor = cursors[cursors.length - 1];
+  const pageNumber = cursors.length;
   const perPage = 10;
-  const [total, setTotal] = useState<number>(0);
-  const [admins, setAdmins] = useState<number>(0);
-  const [verified, setVerified] = useState<number>(0);
-  const [banned, setBanned] = useState<number>(0);
 
   const [query, setQuery] = useState<string>("");
   const [debouncedQuery, setDebouncedQuery] = useState<string>("");
 
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
-  const [showMobileSearch, setShowMobileSearch] = useState(false);
 
+  // Debounce pencarian agar tidak nembak API tiap ketikan.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 400);
     return () => clearTimeout(timer);
   }, [query]);
 
-  async function loadUsers(p = page, q = debouncedQuery) {
-    setLoading(true);
-
-    try {
-      const params = new URLSearchParams();
-      params.set("page", String(p));
-      params.set("limit", String(perPage));
-      if (q) params.set("q", q);
-
-      const res = await fetch(`/api/admin/users?${params.toString()}`, {
-        credentials: "same-origin",
-      });
-
-      if (!res.ok) {
-        showToast("error", "Failed to load users");
-        setUsers([]);
-        setTotal(0);
-        setAdmins(0);
-        setVerified(0);
-        setBanned(0);
-        setPage(1);
-        setLoading(false);
-        return;
-      }
-
-      const data = await res.json();
-      console.debug("GET /api/admin/users response:", data);
-
-      if (data && Array.isArray(data.users)) {
-        setUsers(data.users);
-        setTotal(typeof data.total === "number" ? data.total : data.users.length);
-        setAdmins(typeof data.admins === "number" ? data.admins : data.users.filter((u: any) => u.role === "ADMIN").length);
-        setVerified(typeof data.verified === "number" ? data.verified : data.users.filter((u: any) => u.verified).length);
-        setBanned(typeof data.banned === "number" ? data.banned : data.users.filter((u: any) => u.banned).length);
-        setPage(typeof data.page === "number" ? data.page : p);
-        setLoading(false);
-        return;
-      }
-
-      if (Array.isArray(data)) {
-        const totalCount = data.length;
-        const start = (p - 1) * perPage;
-        const paged = data.slice(start, start + perPage);
-        setUsers(paged);
-        setTotal(totalCount);
-        setAdmins(data.filter((u: any) => u.role === "ADMIN").length);
-        setVerified(data.filter((u: any) => u.verified).length);
-        setBanned(data.filter((u: any) => u.banned).length);
-        setPage(p);
-        setLoading(false);
-        return;
-      }
-
-      console.warn("Unexpected /api/admin/users response shape:", data);
-      setUsers([]);
-      setTotal(0);
-      setAdmins(0);
-      setVerified(0);
-      setBanned(0);
-      setPage(1);
-    } catch (e) {
-      console.error("loadUsers error", e);
-      showToast("error", "An error occurred while loading users");
-      setUsers([]);
-      setTotal(0);
-      setAdmins(0);
-      setVerified(0);
-      setBanned(0);
-      setPage(1);
-    } finally {
-      setLoading(false);
-    }
-  }
-
+  // Ganti pencarian -> reset seleksi + kembali ke halaman pertama.
+  const mounted = useRef(false);
   useEffect(() => {
-    setPage(1);
-    setSelectedUsers(new Set());
-    loadUsers(1, debouncedQuery);
+    if (!mounted.current) {
+      mounted.current = true;
+    } else {
+      setCursors((prev) => (prev.length === 1 ? prev : [null]));
+      setSelectedUsers(new Set());
+    }
   }, [debouncedQuery]);
 
-  useEffect(() => {
-    loadUsers(page, debouncedQuery);
-  }, [page]);
+  // ---- data via SWR: cache + dedupe otomatis antar navigasi ----
+  const params = new URLSearchParams({ limit: String(perPage) });
+  if (debouncedQuery) params.set("q", debouncedQuery);
+  if (cursor) params.set("cursor", cursor);
+  const { data, isLoading: loading, mutate: mutateUsers } = useSWR<AdminUsersResponse>(
+    `/api/admin/users?${params.toString()}`,
+    swrFetcher,
+    { keepPreviousData: true }
+  );
 
-  useEffect(() => {
-    loadUsers(1, debouncedQuery);
-  }, []);
+  const users: UserItem[] = data?.users ?? [];
+  const total = data?.total ?? 0;
+  const hasNextPage = !!data?.nextCursor;
+  const lastPageApprox = Math.max(pageNumber, Math.ceil(total / perPage));
+  const admins = data?.admins ?? 0;
+  const banned = data?.banned ?? 0;
+  const verified = users.filter((u) => u.verified).length;
 
+  function toggleSelectAll(checked: boolean | "indeterminate") {
+    const selectableIds = users.filter((u) => u.role === "USER").map((u) => u.id);
 
-  function toggleSelectAll() {
-    const selectableUsers = users.filter((u) => u.role === "USER");
-    const selectableIds = selectableUsers.map((u) => u.id);
-
-    const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedUsers.has(id));
-
-    if (allSelected) {
-      setSelectedUsers((prev) => {
-        const next = new Set(prev);
-        selectableIds.forEach((id) => next.delete(id));
-        return next;
-      });
-    } else {
-      setSelectedUsers((prev) => {
-        const next = new Set(prev);
-        selectableIds.forEach((id) => next.add(id));
-        return next;
-      });
-    }
+    setSelectedUsers((prev) => {
+      const next = new Set(prev);
+      for (const id of selectableIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
   }
 
   async function banUser(id: string) {
@@ -191,7 +170,7 @@ export default function AdminDashboard() {
       }
 
       showToast("success", "User banned successfully");
-      await loadUsers(page, debouncedQuery);
+      await mutateUsers();
     } catch (e) {
       console.error("ban error", e);
       showToast("error", "An error occurred while banning user");
@@ -224,7 +203,7 @@ export default function AdminDashboard() {
       }
 
       showToast("success", "User unbanned successfully");
-      await loadUsers(page, debouncedQuery);
+      await mutateUsers();
     } catch (e) {
       console.error("unban error", e);
       showToast("error", "An error occurred while unbanning user");
@@ -255,14 +234,42 @@ export default function AdminDashboard() {
       }
 
       showToast("success", "User deleted successfully");
-      const totalAfter = Math.max(0, total - 1);
-      const last = Math.max(1, Math.ceil(totalAfter / perPage));
-      const nextPage = page > last ? last : page;
-      setPage(nextPage);
-      await loadUsers(nextPage, debouncedQuery);
+      // Jika ini baris terakhir di halaman > 1, mundur satu halaman.
+      if (users.length === 1 && pageNumber > 1) setCursors((prev) => prev.slice(0, -1));
+      else await mutateUsers();
     } catch (e) {
       console.error("delete error", e);
       showToast("error", "An error occurred while deleting user");
+    }
+  }
+
+  async function runBatch(
+    method: "PATCH" | "DELETE",
+    successMessage: string,
+    body: Record<string, unknown>
+  ) {
+    setBatchLoading(true);
+    try {
+      const res = await fetch("/api/admin/users/batch", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "same-origin",
+      });
+
+      if (res.ok) {
+        showToast("success", successMessage);
+        setSelectedUsers(new Set());
+        await mutateUsers();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast("error", data.message || "Batch operation failed");
+      }
+    } catch (e) {
+      console.error("batch error", e);
+      showToast("error", "An error occurred during the batch operation");
+    } finally {
+      setBatchLoading(false);
     }
   }
 
@@ -271,41 +278,16 @@ export default function AdminDashboard() {
       showToast("warning", "Please select at least one user to ban");
       return;
     }
+    const ids = Array.from(selectedUsers);
     const ok = await confirm({
-      title: `Ban ${selectedUsers.size} user(s)?`,
-      description: `This will ban ${selectedUsers.size} selected user(s).`,
+      title: `Ban ${ids.length} user(s)?`,
+      description: `This will ban ${ids.length} selected user(s).`,
       confirmLabel: "Ban selected",
       cancelLabel: "Cancel",
       danger: true,
     });
-
     if (!ok) return;
-
-    const ids = Array.from(selectedUsers)
-
-    setBatchLoading(true);
-    try {
-      const res = await fetch("/api/admin/users/batch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, banned: true }),
-        credentials: "same-origin",
-      });
-
-      if (res.ok) {
-        showToast("success", `${ids.length} user(s) banned successfully`);
-        setSelectedUsers(new Set());
-        await loadUsers(page, debouncedQuery);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        showToast("error", data.message || "Batch ban failed");
-      }
-    } catch (e) {
-      console.error("batch ban error", e);
-      showToast("error", "An error occurred while banning users");
-    } finally {
-      setBatchLoading(false);
-    }
+    await runBatch("PATCH", `${ids.length} user(s) banned successfully`, { ids, banned: true });
   }
 
   async function handleBatchUnban() {
@@ -313,41 +295,16 @@ export default function AdminDashboard() {
       showToast("warning", "Please select at least one user to unban");
       return;
     }
+    const ids = Array.from(selectedUsers);
     const ok = await confirm({
-      title: `Unban ${selectedUsers.size} user(s)?`,
-      description: `This will unban ${selectedUsers.size} selected user(s).`,
+      title: `Unban ${ids.length} user(s)?`,
+      description: `This will unban ${ids.length} selected user(s).`,
       confirmLabel: "Unban selected",
       cancelLabel: "Cancel",
       danger: false,
     });
-
     if (!ok) return;
-
-    const ids = Array.from(selectedUsers)
-
-    setBatchLoading(true);
-    try {
-      const res = await fetch("/api/admin/users/batch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, banned: false }),
-        credentials: "same-origin",
-      });
-
-      if (res.ok) {
-        showToast("success", `${ids.length} user(s) unbanned successfully`);
-        setSelectedUsers(new Set());
-        await loadUsers(page, debouncedQuery);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        showToast("error", data.message || "Batch unban failed");
-      }
-    } catch (e) {
-      console.error("batch unban error", e);
-      showToast("error", "An error occurred while unbanning users");
-    } finally {
-      setBatchLoading(false);
-    }
+    await runBatch("PATCH", `${ids.length} user(s) unbanned successfully`, { ids, banned: false });
   }
 
   async function handleBatchDelete() {
@@ -355,45 +312,17 @@ export default function AdminDashboard() {
       showToast("warning", "Please select at least one user to delete");
       return;
     }
+    const ids = Array.from(selectedUsers);
     const ok = await confirm({
-      title: `Delete ${selectedUsers.size} user(s)?`,
-      description: `This will permanently delete ${selectedUsers.size} selected user(s) and their files.`,
+      title: `Delete ${ids.length} user(s)?`,
+      description: `This will permanently delete ${ids.length} selected user(s) and their files.`,
       confirmLabel: "Delete selected",
       cancelLabel: "Cancel",
       danger: true,
     });
-
     if (!ok) return;
-
-    const ids = Array.from(selectedUsers)
-
-    setBatchLoading(true);
-    try {
-      const res = await fetch("/api/admin/users/batch", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-        credentials: "same-origin",
-      });
-
-      if (res.ok) {
-        showToast("success", `${ids.length} user(s) deleted successfully`);
-        const totalAfter = Math.max(0, total - ids.length);
-        const last = Math.max(1, Math.ceil(totalAfter / perPage));
-        const nextPage = page > last ? last : page;
-        setSelectedUsers(new Set());
-        setPage(nextPage);
-        await loadUsers(nextPage, debouncedQuery);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        showToast("error", data.message || "Batch delete failed");
-      }
-    } catch (e) {
-      console.error("batch delete error", e);
-      showToast("error", "An error occurred while deleting users");
-    } finally {
-      setBatchLoading(false);
-    }
+    if (ids.length >= users.length && pageNumber > 1) setCursors((prev) => prev.slice(0, -1));
+    await runBatch("DELETE", `${ids.length} user(s) deleted successfully`, { ids });
   }
 
   async function handleLogout() {
@@ -401,224 +330,141 @@ export default function AdminDashboard() {
     window.location.href = "/login";
   }
 
-  const lastPage = Math.max(1, Math.ceil(total / perPage));
-  const firstItem = total === 0 ? 0 : (page - 1) * perPage + 1;
-  const lastItem = Math.min(page * perPage, total);
+  const firstItem = total === 0 ? 0 : (pageNumber - 1) * perPage + 1;
+  const lastItem = Math.min(pageNumber * perPage, total);
 
   const selectableUsers = users.filter((u) => u.role === "USER");
   const selectableIds = selectableUsers.map((u) => u.id);
   const allSelectableSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedUsers.has(id));
   const someSelectableSelected = selectableIds.some((id) => selectedUsers.has(id)) && !allSelectableSelected;
 
+  const stats: { label: string; value: number; icon: React.ElementType; tone?: string }[] = [
+    { label: "Total users", value: total, icon: UsersIcon },
+    { label: "Admins", value: admins, icon: ShieldIcon },
+    { label: "Verified", value: verified, icon: CircleCheckIcon, tone: "text-emerald-600 dark:text-emerald-400" },
+    { label: "Banned", value: banned, icon: BanIcon, tone: "text-destructive" },
+  ];
+
   return (
-    <main className="home-landing app-shell">
-      <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
-        <span className="navbar-brand">Admin Dashboard</span>
+    <main className="min-h-dvh">
+      <AppNavbar
+        title="Admin dashboard"
+        brandHref="/admin"
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search users...",
+        }}
+      >
+        <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <LogOutIcon data-icon="inline-start" />
+          <span className="hidden sm:inline">Logout</span>
+        </Button>
+      </AppNavbar>
 
-        <div className="ms-auto d-flex gap-2 align-items-center">
-          <div className="input-group me-2 d-none d-md-flex" style={{ minWidth: 220 }}>
-            <input
-              type="search"
-              className="form-control form-control-sm"
-              placeholder="Search users..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {query && (
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary"
-                onClick={() => setQuery("")}
-                title="Clear"
-              >
-                ×
-              </button>
-            )}
-          </div>
-
-          <button
-            className="btn btn-outline-light btn-sm d-md-none"
-            onClick={() => setShowMobileSearch(!showMobileSearch)}
-            title="Search"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-            </svg>
-          </button>
-
-          <button className="btn btn-outline-light btn-sm" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </nav>
-
-      {showMobileSearch && (
-        <div className="bg-dark border-bottom border-secondary px-4 py-3 d-md-none">
-          <div className="input-group">
-            <input
-              type="search"
-              className="form-control form-control-sm"
-              placeholder="Search users..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              autoFocus
-            />
-            {query && (
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary"
-                onClick={() => setQuery("")}
-                title="Clear"
-              >
-                ×
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-light"
-              onClick={() => setShowMobileSearch(false)}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="container app-shell-main">
-        <div className="app-section-header">
-          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs mb-2 font-medium uppercase tracking-[0.15em] shadow-sm">
-              <span>🛡️</span> Admin space
-            </span>
-          </div>
-          <h1 className="app-section-title mb-1">User management</h1>
-          <p className="app-section-subtitle mb-0">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8">
+        <div className="mb-6">
+          <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+            <ShieldIcon className="size-3" />
+            Admin space
+          </span>
+          <h1 className="font-heading text-2xl font-bold tracking-tight">User management</h1>
+          <p className="text-sm text-muted-foreground">
             View all registered users, ban or unban suspicious accounts, and remove user data when needed.
           </p>
         </div>
 
-        <div className="row g-4">
-          <div className="col-lg-4">
-            <div className="landing-card shadow-lg border-0 p-4">
-              <h5 className="mb-2 fw-bold">Overview</h5>
-              <p className="text-muted small mb-3">Quick glance of your user base.</p>
-
-              <div className="landing-mini-card rounded-3 p-3 mb-3">
-                <div className="d-flex justify-content-between small mb-2">
-                  <span className="fw-semibold">Total users</span>
-                  <span className="fw-bold">{total}</span>
-                </div>
-                <div className="d-flex justify-content-between small mb-2">
-                  <span>Admins</span>
-                  <span>{admins}</span>
-                </div>
-                <div className="d-flex justify-content-between small mb-2">
-                  <span>Verified users</span>
-                  <span className="text-success">{verified}</span>
-                </div>
-                <div className="d-flex justify-content-between small mb-2">
-                  <span>Banned users</span>
-                  <span className="text-danger">{banned}</span>
-                </div>
+        <div className="grid gap-4 lg:grid-cols-4">
+          {/* Overview panel */}
+          <Card className="h-full lg:col-span-1">
+            <CardHeader>
+              <CardTitle>Overview</CardTitle>
+              <CardDescription>Quick glance of your user base.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 grid grid-cols-2 gap-2">
+                {stats.map((stat) => (
+                  <div key={stat.label} className="rounded-xl border bg-muted/40 p-2.5">
+                    <div className={`flex items-center gap-1 text-[0.7rem] text-muted-foreground ${stat.tone ?? ""}`}>
+                      <stat.icon className="size-3" />
+                      {stat.label}
+                    </div>
+                    <div className={`tnum mt-0.5 text-lg font-bold tracking-tight ${stat.tone ?? ""}`}>
+                      {stat.value}
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <p className="text-muted small mb-2">• Only regular users can be banned or deleted.</p>
-              <p className="text-muted small mb-2">• Admin accounts are protected to avoid losing access.</p>
-            </div>
-          </div>
+              <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
+                · Only regular users can be banned or deleted.
+              </p>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                · Admin accounts are protected to avoid losing access.
+              </p>
+            </CardContent>
+          </Card>
 
-          <div className="col-lg-8">
-            <div className="landing-card admin-users-card shadow-lg border-0 p-4">
-              <div className="d-flex justify-content-between align-items-start gap-3">
-                <div>
-                  <h2 className="mb-1 fw-bold" style={{ fontSize: "1.15rem" }}>List of Users</h2>
-                  <p className="text-muted small mb-0">Manage roles, ban/unban users, and remove accounts.</p>
-                </div>
-                <span className="landing-pill inline-flex items-centrerounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] shadow-sm">
-                  {total} user(s)
-                </span>
+          {/* Users panel */}
+          <Card className="h-full lg:col-span-3">
+            <CardHeader className="flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle>Users</CardTitle>
+                <CardDescription>Manage roles, ban/unban users, and remove accounts.</CardDescription>
               </div>
-
+              <Badge variant="secondary" className="tnum shrink-0">
+                {total} {total === 1 ? "user" : "users"}
+              </Badge>
+            </CardHeader>
+            <CardContent>
               {selectableUsers.length > 0 && (
-                <div className="mt-3 p-3 rounded-2 border">
-                  <div className="d-flex flex-wrap align-items-center gap-3">
-                    <div className="form-check">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
+                <div
+                  className={`rounded-xl border p-3 transition-colors ${
+                    selectedUsers.size > 0 ? "bg-primary/5" : ""
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                      <Checkbox
                         id="selectAll"
                         checked={allSelectableSelected}
-                        ref={(input) => {
-                          if (input) input.indeterminate = someSelectableSelected;
-                        }}
-                        onChange={toggleSelectAll}
+                        indeterminate={someSelectableSelected}
+                        onCheckedChange={(checked) => toggleSelectAll(checked)}
                       />
-                      <label className="form-check-label small" htmlFor="selectAll">
-                        Select all on this page
-                      </label>
-                    </div>
+                      Select all users on this page
+                    </label>
 
                     {selectedUsers.size > 0 && (
                       <>
-                        <span className="badge bg-primary">{selectedUsers.size} selected</span>
-                        <button
-                          className="btn btn-sm btn-outline-secondary"
-                          onClick={() => setSelectedUsers(new Set())}
-                          title="Clear all selections"
-                        >
+                        <Badge className="tnum">{selectedUsers.size} selected</Badge>
+                        <Button variant="outline" size="sm" onClick={() => setSelectedUsers(new Set())}>
                           Clear all
-                        </button>
-                        <div className="d-flex gap-2 ms-auto w-100 w-md-auto mt-2 mt-md-0">
-                          <button
-                            className="btn btn-warning d-none d-md-inline-block"
-                            style={{ fontSize: "0.875rem", padding: "0.375rem 0.75rem" }}
+                        </Button>
+                        <div className="ms-auto flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400"
                             onClick={handleBatchBan}
                             disabled={batchLoading}
                           >
-                            {batchLoading ? "Processing..." : "🚫 Ban Selected"}
-                          </button>
-                          <button
-                            className="btn btn-warning d-md-none"
-                            style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
-                            onClick={handleBatchBan}
-                            disabled={batchLoading}
-                          >
-                            {batchLoading ? "..." : "🚫 Ban"}
-                          </button>
-
-                          <button
-                            className="btn btn-success d-none d-md-inline-block"
-                            style={{ fontSize: "0.875rem", padding: "0.375rem 0.75rem" }}
+                            <BanIcon data-icon="inline-start" />
+                            Ban selected
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600 dark:text-emerald-400"
                             onClick={handleBatchUnban}
                             disabled={batchLoading}
                           >
-                            {batchLoading ? "Processing..." : "✅ Unban Selected"}
-                          </button>
-                          <button
-                            className="btn btn-success d-md-none"
-                            style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
-                            onClick={handleBatchUnban}
-                            disabled={batchLoading}
-                          >
-                            {batchLoading ? "..." : "✅ Unban"}
-                          </button>
-
-                          <button
-                            className="btn btn-danger d-none d-md-inline-block"
-                            style={{ fontSize: "0.875rem", padding: "0.375rem 0.75rem" }}
-                            onClick={handleBatchDelete}
-                            disabled={batchLoading}
-                          >
-                            {batchLoading ? "Processing..." : "🗑️ Delete Selected"}
-                          </button>
-                          <button
-                            className="btn btn-danger d-md-none"
-                            style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
-                            onClick={handleBatchDelete}
-                            disabled={batchLoading}
-                          >
-                            {batchLoading ? "..." : "🗑️ Delete"}
-                          </button>
+                            <CircleCheckIcon data-icon="inline-start" />
+                            Unban selected
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={handleBatchDelete} disabled={batchLoading}>
+                            <Trash2Icon data-icon="inline-start" />
+                            Delete selected
+                          </Button>
                         </div>
                       </>
                     )}
@@ -626,32 +472,42 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {loading ? (
-                <div className="text-center py-5">
-                  <div className="spinner-border text-primary" role="status">
-                    <span className="visually-hidden">Loading...</span>
-                  </div>
+              {loading && users.length === 0 ? (
+                <div className="flex flex-col gap-1 pt-4">
+                  <UserSkeletonRow />
+                  <UserSkeletonRow />
+                  <UserSkeletonRow />
                 </div>
               ) : users.length === 0 ? (
-                <div className="mt-4 landing-mini-card rounded-3 p-3 text-center small">
-                  {query ? `No users found for "${query}"` : "There are no users yet."}
-                </div>
+                <Empty className="mt-4 border border-dashed">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      {debouncedQuery ? <SearchXIcon /> : <UsersIcon />}
+                    </EmptyMedia>
+                    <EmptyTitle>{debouncedQuery ? "No users match your search" : "No users yet"}</EmptyTitle>
+                    <EmptyDescription>
+                      {debouncedQuery
+                        ? `Nothing found for “${debouncedQuery}”. Try a different keyword.`
+                        : "New registrations will appear here."}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : (
-                <div className="mt-4">
-                  <div className="rounded-3 border border-slate-200/70 dark:border-slate-700/70 overflow-hidden">
+                <>
+                  <div className={`mt-4 flex flex-col gap-2 transition-opacity ${loading ? "opacity-50" : ""}`}>
                     {users.map((u) => (
                       <div
                         key={u.id}
-                        className="border-bottom border-slate-200/70 dark:border-slate-700/70 last:border-0 px-3 py-3 d-flex gap-3"
+                        className={`flex flex-col gap-3 rounded-xl border p-3 transition-colors md:flex-row md:items-center ${
+                          u.role === "ADMIN" ? "opacity-90" : "hover:bg-muted/40"
+                        }`}
                       >
-                        <div className="d-flex align-items-start pt-1">
+                        <div className="flex items-center gap-3 md:pt-0">
                           {u.role === "USER" ? (
-                            <input
-                              className="form-check-input"
-                              type="checkbox"
+                            <Checkbox
+                              aria-label={`Select ${u.name}`}
                               checked={selectedUsers.has(u.id)}
-                              onChange={() => {
-                                if (u.role === "ADMIN") return;
+                              onCheckedChange={() => {
                                 setSelectedUsers((prev) => {
                                   const newSet = new Set(prev);
                                   if (newSet.has(u.id)) newSet.delete(u.id);
@@ -661,101 +517,121 @@ export default function AdminDashboard() {
                               }}
                             />
                           ) : (
-                            <div style={{ width: "16px" }} />
+                            <span className="size-4" aria-hidden="true" />
+                          )}
+
+                          <Avatar className="size-10">
+                            <AvatarFallback>{getInitials(u.name)}</AvatarFallback>
+                          </Avatar>
+                        </div>
+
+                        <div className="min-w-0 grow">
+                          <div className="flex flex-wrap items-center gap-2 font-semibold">
+                            <span className="truncate">{u.name}</span>
+                            {u.banned && <Badge variant="destructive">Banned</Badge>}
+                            {u.role === "ADMIN" && <Badge>Admin</Badge>}
+                            {u.role === "USER" &&
+                              (u.verified ? (
+                                <Badge variant="secondary">Verified</Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+                                >
+                                  Unverified
+                                </Badge>
+                              ))}
+                          </div>
+
+                          <div className="truncate text-sm text-muted-foreground">{u.email.toLowerCase()}</div>
+
+                          {u.role !== "ADMIN" ? (
+                            <div className="tnum text-xs text-muted-foreground">
+                              {typeof u.fileCount === "number" ? `${u.fileCount} ${u.fileCount === 1 ? "file" : "files"}` : ""}
+                              {typeof u.fileCount === "number" && typeof u.totalSizeBytes === "number" ? " · " : ""}
+                              {typeof u.totalSizeBytes === "number" ? formatSize(u.totalSizeBytes) : ""}
+                              {" · "}
+                              Joined {new Date(u.createdAt).toLocaleDateString("en-US")}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              Joined {new Date(u.createdAt).toLocaleDateString("en-US")}
+                            </div>
                           )}
                         </div>
 
-                        <div className="flex-grow-1 position-relative pb-1 pb-md-4">
-                          <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2 gap-md-3">
-                            <div className="flex-grow-1">
-                              <div className="fw-semibold d-flex align-items-center gap-2">
-                                {u.name}
-                                {u.banned && <span className="badge bg-danger ms-2">BANNED</span>}
-                              </div>
-
-                              <div className="text-muted small">{u.email.toLowerCase()}</div>
-
-                              <div className="text-muted small mt-1">
-                                {u.role === "ADMIN"
-                                  ? ""
-                                  : `${typeof u.fileCount === "number" ? u.fileCount : ""} files • ${typeof u.totalSizeBytes === "number" ? formatSize(u.totalSizeBytes) : ""}`}
-                              </div>
-                            </div>
-
-                            <div className="d-flex flex-row gap-2 align-items-center position-absolute position-md-static top-0 end-0 pt-1">
-                              <div><span className="fw-semibold small">{u.role}</span></div>
-
-                              {u.role !== "ADMIN" && (
-                                <div>
-                                  {u.verified ? (
-                                    <span className="badge bg-success small">VERIFIED</span>
-                                  ) : (
-                                    <span className="badge bg-warning text-dark small">NOT VERIFIED</span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="d-none d-md-block position-absolute start-0 bottom-0 small text-muted">
-                            {new Date(u.createdAt).toLocaleDateString("en-US")}
-                          </div>
-
-                          <div className="d-none d-md-flex position-absolute end-0 bottom-0 gap-2">
-                            {u.role === "USER" ? (
-                              <>
-                                {u.banned ? (
-                                  <button className="btn btn-sm btn-outline-success" onClick={() => unbanUser(u.id)}>Unban</button>
-                                ) : (
-                                  <button className="btn btn-sm btn-warning" onClick={() => banUser(u.id)}>Ban</button>
-                                )}
-                                <button className="btn btn-sm btn-danger" onClick={() => deleteUser(u.id)}>Delete</button>
-                              </>
-                            ) : (
-                              <span className="small text-muted">Admin accounts cannot be modified here.</span>
-                            )}
-                          </div>
-
-                          <div className="d-flex d-md-none justify-content-between align-items-center mt-3">
-                            <div className="small text-muted">{new Date(u.createdAt).toLocaleDateString("en-US")}</div>
-
-                            <div className="d-flex gap-2">
-                              {u.role === "USER" ? (
-                                <>
-                                  {u.banned ? (
-                                    <button className="btn btn-sm btn-outline-success" onClick={() => unbanUser(u.id)}>Unban</button>
-                                  ) : (
-                                    <button className="btn btn-sm btn-warning" onClick={() => banUser(u.id)}>Ban</button>
-                                  )}
-                                  <button className="btn btn-sm btn-danger" onClick={() => deleteUser(u.id)}>Delete</button>
-                                </>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {u.role === "USER" ? (
+                            <>
+                              {u.banned ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600 dark:text-emerald-400"
+                                  onClick={() => unbanUser(u.id)}
+                                >
+                                  Unban
+                                </Button>
                               ) : (
-                                <span className="small text-muted">Protected</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400"
+                                  onClick={() => banUser(u.id)}
+                                >
+                                  Ban
+                                </Button>
                               )}
-                            </div>
-                          </div>
+                              <Button variant="destructive" size="sm" onClick={() => deleteUser(u.id)}>
+                                Delete
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <ShieldCheckIcon className="size-3.5" />
+                              Protected
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
 
-                  <div className="d-flex justify-content-between align-items-center mt-3">
-                    <div className="text-muted small">Showing {firstItem} - {lastItem} of {total}</div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="tnum text-sm text-muted-foreground">
+                      Showing {firstItem}–{lastItem} of {total}
+                    </div>
 
-                    <div className="d-flex gap-2 align-items-center">
-                      <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>Previous</button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        onClick={() => setCursors((prev) => prev.slice(0, -1))}
+                        disabled={pageNumber <= 1}
+                        aria-label="Previous page"
+                      >
+                        <ChevronLeftIcon />
+                      </Button>
 
-                      <div className="small text-muted" style={{ minWidth: 90, textAlign: "center" }}>
-                        Page {page} / {lastPage}
+                      <div className="tnum min-w-[90px] text-center text-sm text-muted-foreground">
+                        Page {pageNumber} of {lastPageApprox}
                       </div>
 
-                      <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page >= lastPage}>Next</button>
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        onClick={() => setCursors((prev) => [...prev, data?.nextCursor ?? null])}
+                        disabled={!hasNextPage}
+                        aria-label="Next page"
+                      >
+                        <ChevronRightIcon />
+                      </Button>
                     </div>
                   </div>
-                </div>
+                </>
               )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </main>

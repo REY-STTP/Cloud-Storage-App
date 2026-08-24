@@ -1,51 +1,20 @@
 // app/api/files/batch/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { File as FileModel } from "@/models/File";
+import { query } from "@/lib/db";
 import { verifyJwt } from "@/lib/auth";
-import { v2 as cloudinary } from "cloudinary";
+import { getUserById } from "@/lib/users";
+import { deleteObject } from "@/lib/storage";
+import type { FileRow } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
-
-async function safeDestroy(publicId: string, file?: any) {
-  const mime = (file && (file.mimeType || file.format || file.type)) || "";
-  const tryList: string[] = [];
-
-  if (mime) {
-    const m = String(mime).toLowerCase();
-    if (m.startsWith("image/")) tryList.push("image");
-    else if (m.startsWith("video/")) tryList.push("video");
-    else if (m.includes("javascript")) tryList.push("javascript");
-    else if (m.includes("css")) tryList.push("css");
-    else tryList.push("raw");
-  }
-
-  ["raw", "image", "video", "javascript", "css"].forEach((t) => {
-    if (!tryList.includes(t)) tryList.push(t);
-  });
-
-  let lastErr: any = null;
-  for (const resource_type of tryList) {
-    try {
-      const res = await cloudinary.uploader.destroy(publicId, { resource_type });
-      return { ok: true, result: res, resource_type };
-    } catch (err: any) {
-      lastErr = err;
-      const msg = err?.message || "";
-      if (err?.http_code === 400 && msg.includes("Invalid resource type")) {
-        continue;
-      }
-      return { ok: false, error: String(err), resource_type };
-    }
-  }
-
-  return { ok: false, error: String(lastErr) || "destroy failed", resource_type: null };
+/** Keep only well-formed uuids so Postgres doesn't throw on bad input. */
+function toUuidList(ids: unknown[]): string[] {
+  return ids.filter(
+    (id): id is string =>
+      typeof id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  );
 }
 
 export async function DELETE(req: NextRequest) {
@@ -56,8 +25,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
   try {
     const body = await req.json();
     const { ids } = body;
@@ -66,38 +33,56 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ message: "No file IDs provided" }, { status: 400 });
     }
 
-    const files = await FileModel.find({
-      _id: { $in: ids },
-      owner: payload.userId,
-    }).lean();
+    const uuidIds = toUuidList(ids);
+    if (uuidIds.length === 0) {
+      return NextResponse.json({ message: "No files found" }, { status: 404 });
+    }
+
+    const actor = await getUserById(payload.userId);
+    if (!actor) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+    if (actor.banned) {
+      return NextResponse.json({ message: "Your account has been banned" }, { status: 403 });
+    }
+
+    const filesResult = await query<FileRow>(
+      `select id, filename, original_name as "originalName", mime_type as "mimeType",
+              resource_type as "resourceType", url, public_id as "publicId",
+              size, owner, created_at as "createdAt", updated_at as "updatedAt"
+       from files where id = any($1::uuid[]) and owner = $2`,
+      [uuidIds, payload.userId]
+    );
+    const files = filesResult.rows;
 
     if (files.length === 0) {
       return NextResponse.json({ message: "No files found" }, { status: 404 });
     }
 
-    const cloudinaryResults = await Promise.all(
-      files.map(async (file: any) => {
-        if (!file.publicId) return { ok: false, id: file._id, reason: "no-publicId" };
+    // Hapus objek dari R2; kegagalan satu objek tidak menggagalkan yang lain.
+    const storageResults = await Promise.all(
+      files.map(async (file) => {
+        if (!file.publicId) return { ok: false, id: file.id, reason: "no-key" };
         try {
-          const r = await safeDestroy(file.publicId, file);
-          if (r.ok) return { ok: true, id: file._id, result: r.result, resource_type: r.resource_type };
-          return { ok: false, id: file._id, error: r.error, resource_type: r.resource_type };
+          await deleteObject(file.publicId);
+          return { ok: true, id: file.id };
         } catch (err) {
-          console.warn(`Failed to delete ${file.publicId} from Cloudinary:`, err);
-          return { ok: false, id: file._id, error: String(err) };
+          console.warn(`Failed to delete ${file.publicId} from storage:`, err);
+          return { ok: false, id: file.id, error: err instanceof Error ? err.message : String(err) };
         }
       })
     );
 
-    const result = await FileModel.deleteMany({
-      _id: { $in: ids },
-      owner: payload.userId,
-    });
+    const deleteResult = await query(
+      "delete from files where id = any($1::uuid[]) and owner = $2",
+      [uuidIds, payload.userId]
+    );
+    const deletedCount = deleteResult.rowCount ?? 0;
 
     return NextResponse.json({
-      message: `Successfully deleted ${result.deletedCount} file(s)`,
-      deletedCount: result.deletedCount,
-      cloudinaryResults,
+      message: `Successfully deleted ${deletedCount} file(s)`,
+      deletedCount,
+      storageResults,
     });
   } catch (error) {
     console.error("Batch delete error:", error);

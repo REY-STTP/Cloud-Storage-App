@@ -1,7 +1,9 @@
 // lib/auth.ts
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import type { Role } from "@/models/User";
+import type { Role } from "@/lib/types";
+
+export type { Role };
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) {

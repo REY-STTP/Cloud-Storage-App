@@ -1,19 +1,19 @@
 // app/api/files/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
-import { File as FileModel } from "@/models/File";
+import { pool, query } from "@/lib/db";
 import { verifyJwt } from "@/lib/auth";
-import { v2 as cloudinary } from "cloudinary";
-import { Types } from "mongoose";
+import { getUserById } from "@/lib/users";
+import { jsonNoStore } from "@/lib/http";
+import {
+  isStorageConfigured,
+  putObject,
+  deleteObject,
+  buildObjectKey,
+  canonicalUrl,
+} from "@/lib/storage";
+import type { FileRow } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
 
 const MAX_STORAGE_BYTES =
   Number(process.env.MAX_STORAGE_BYTES ?? 1073741824);
@@ -92,29 +92,85 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-  const limit = Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10));
-  const skip = (page - 1) * limit;
+  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10)));
 
   const q = (url.searchParams.get("q") || "").trim();
 
-  const filter: any = { owner: payload.userId };
+  // ---- Keyset pagination ----
+  // Kursor = (created_at, id) dari baris terakhir halaman sebelumnya,
+  // di-encode base64url agar aman di URL. Tanpa kursor -> halaman pertama.
+  let cursorTime: string | null = null;
+  let cursorId: string | null = null;
+  const cursorRaw = url.searchParams.get("cursor");
+  if (cursorRaw) {
+    try {
+      const [iso, id] = Buffer.from(cursorRaw, "base64url").toString("utf8").split("|");
+      if (
+        !Number.isNaN(Date.parse(iso || "")) &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || "")
+      ) {
+        cursorTime = iso!;
+        cursorId = id!;
+      }
+    } catch {
+      // kursor tidak valid -> perlakukan sebagai halaman pertama
+    }
+  }
+  const keyset = cursorTime !== null && cursorId !== null;
+
+  // Bangun WHERE dinamis dengan nomor parameter yang konsisten.
+  const whereParts = ["owner = $1"];
+  const values: unknown[] = [payload.userId];
   if (q) {
-    filter.filename = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
+    values.push(`%${q}%`);
+    whereParts.push(`filename ilike $${values.length}`);
+  }
+  if (keyset) {
+    // Row-value comparison: butuh tiebreaker id agar tidak ada baris
+    // terlewat saat dua file punya created_at identik.
+    values.push(cursorTime, cursorId);
+    whereParts.push(
+      `(created_at, id) < ($${values.length - 1}::timestamptz, $${values.length}::uuid)`
+    );
   }
 
-  const total = await FileModel.countDocuments(filter);
-  const docs = await FileModel.find(filter)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+  // Ambil limit+1 untuk mendeteksi keberadaan halaman berikutnya.
+  values.push(limit + 1);
+  const docsResult = await query<FileRow>(
+    `select id, filename, original_name as "originalName", mime_type as "mimeType",
+            resource_type as "resourceType", url, public_id as "publicId",
+            size, owner, created_at as "createdAt", updated_at as "updatedAt"
+     from files
+     where ${whereParts.join(" and ")}
+     order by created_at desc, id desc
+     limit $${values.length}`,
+    values
+  );
 
-  const files = docs.map((f: any) => ({
-    id: f._id.toString(),
+  const rows = docsResult.rows;
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+
+  let nextCursor: string | null = null;
+  if (hasMore && pageRows.length > 0) {
+    const last = pageRows[pageRows.length - 1];
+    nextCursor = Buffer.from(
+      `${new Date(last.createdAt).toISOString()}|${last.id}`
+    ).toString("base64url");
+  }
+
+  const totalResult = await query<{ count: number }>(
+    `select count(*) as count from files where owner = $1 ${
+      q ? "and filename ilike $2" : ""
+    }`,
+    q ? [payload.userId, `%${q}%`] : [payload.userId]
+  );
+  const total = Number(totalResult.rows[0]?.count ?? 0);
+
+  const files = pageRows.map((f) => ({
+    id: f.id,
     filename: f.filename,
     url: f.url,
     size: f.size ?? 0,
@@ -122,11 +178,12 @@ export async function GET(req: NextRequest) {
     mimeType: f.mimeType,
   }));
 
-  return NextResponse.json({
+  return jsonNoStore({
     files,
     total,
     page,
     perPage: limit,
+    nextCursor,
   });
 }
 
@@ -138,18 +195,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
-  const user = await User.findById(payload.userId).select("verified").lean();
+  const user = await getUserById(payload.userId);
 
   if (!user) {
     return NextResponse.json({ message: "User not found" }, { status: 404 });
+  }
+
+  if (user.banned) {
+    return NextResponse.json(
+      { message: "Your account has been banned. You cannot upload files." },
+      { status: 403 }
+    );
   }
 
   if (!user.verified) {
     return NextResponse.json(
       { message: "Please verify your email in profile before uploading files" },
       { status: 403 }
+    );
+  }
+
+  if (!isStorageConfigured()) {
+    return NextResponse.json(
+      { message: "File storage is not configured. Please contact the administrator." },
+      { status: 500 }
     );
   }
 
@@ -160,19 +229,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "No files uploaded" }, { status: 400 });
   }
 
-  const usageAgg = await FileModel.aggregate([
-    {
-      $match: { owner: new Types.ObjectId(payload.userId) },
-    },
-    {
-      $group: {
-        _id: null,
-        totalSize: { $sum: "$size" },
-      },
-    },
-  ]);
+  const usageResult = await query<{ totalSize: number }>(
+    // ::bigint so pg returns a number rather than numeric-as-string.
+    'select coalesce(sum(size), 0)::bigint as "totalSize" from files where owner = $1',
+    [payload.userId]
+  );
 
-  let usedBytes = usageAgg[0]?.totalSize ?? 0;
+  let usedBytes = Number(usageResult.rows[0]?.totalSize ?? 0);
 
   const savedFiles: any[] = [];
 
@@ -211,50 +274,99 @@ export async function POST(req: NextRequest) {
         resourceType = "video";
       }
 
-      const uploaded = await new Promise<any>((resolve, reject) => {
-        cloudinary.uploader
-          .upload_stream(
-            {
-              folder: process.env.CLOUDINARY_FOLDER || "cloud-storage-app",
-              public_id: `${Date.now()}-${file.name}`,
-              resource_type: resourceType,
-            },
-            (err, result) => {
-              if (err) {
-                console.error("Cloudinary upload error:", err);
-                return reject(err);
-              }
-              if (!result) {
-                return reject(new Error("No result from Cloudinary"));
-              }
-              resolve(result);
-            }
-          )
-          .end(buffer);
-      });
+      const mimeType = file.type || "application/octet-stream";
+      const key = buildObjectKey(file.name);
 
-      if (!uploaded || !uploaded.secure_url) {
-        throw new Error("Cloudinary did not return a secure URL");
+      try {
+        await putObject(key, buffer, mimeType);
+      } catch (uploadErr) {
+        console.error("R2 upload error:", uploadErr);
+        throw new Error(
+          uploadErr instanceof Error &&
+            /not configured/i.test(uploadErr.message)
+            ? uploadErr.message
+            : "Failed to store the file. Please try again."
+        );
       }
 
-      const finalResourceType = uploaded.resource_type || resourceType;
-      const mimeType = file.type || uploaded.format || "application/octet-stream";
+      const finalBytes = buffer.length;
 
-      const saved = await FileModel.create({
-        filename: file.name,
-        originalName: file.name,
-        url: uploaded.secure_url,
-        publicId: uploaded.public_id,
-        size: uploaded.bytes ?? buffer.length,
-        mimeType,
-        resourceType: finalResourceType,
-        owner: payload.userId,
-      });
+      // Cek kuota + insert dilakukan atomik dalam satu transaksi dengan
+      // advisory lock per user, sehingga request paralel dari user yang sama
+      // tidak bisa saling menyelinap melewati batas penyimpanan.
+      const client = await pool.connect();
+      let saved: FileRow;
+      try {
+        await client.query("begin");
+        await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+          payload.userId,
+        ]);
+
+        const usage = await client.query<{ totalSize: number }>(
+          'select coalesce(sum(size), 0)::bigint as "totalSize" from files where owner = $1',
+          [payload.userId]
+        );
+        const currentBytes = Number(usage.rows[0]?.totalSize ?? 0);
+
+        if (currentBytes + finalBytes > MAX_STORAGE_BYTES) {
+          // Kuota terlampaui — batalkan, dan hapus objek yang sudah terlanjur
+          // di-upload ke R2 supaya tidak jadi sampah.
+          await client.query("rollback");
+          try {
+            await deleteObject(key);
+          } catch (destroyErr) {
+            console.warn(
+              "Failed to clean up R2 object after quota rejection:",
+              key,
+              destroyErr
+            );
+          }
+          savedFiles.push({
+            id: null,
+            filename: file.name,
+            error:
+              "Your storage has reached its maximum capacity. Please delete some files first.",
+          });
+          continue;
+        }
+
+        const savedResult = await client.query<FileRow>(
+          `insert into files (filename, original_name, url, public_id, size, mime_type, resource_type, owner)
+           values ($1, $2, $3, $4, $5, $6, $7, $8)
+           returning id, filename, original_name as "originalName", mime_type as "mimeType",
+                     resource_type as "resourceType", url, public_id as "publicId",
+                     size, owner, created_at as "createdAt", updated_at as "updatedAt"`,
+          [
+            file.name,
+            file.name,
+            canonicalUrl(key),
+            key,
+            finalBytes,
+            mimeType,
+            resourceType,
+            payload.userId,
+          ]
+        );
+
+        saved = savedResult.rows[0];
+        await client.query("commit");
+      } catch (txErr) {
+        await client.query("rollback").catch(() => {});
+        // Objek sudah masuk R2 tapi baris DB gagal — bersihkan.
+        try {
+          await deleteObject(key);
+        } catch (cleanupErr) {
+          console.warn("Failed to clean up orphaned R2 object:", key, cleanupErr);
+        }
+        throw txErr;
+      } finally {
+        client.release();
+      }
 
       usedBytes += saved.size ?? fileSize;
 
       savedFiles.push({
-        id: saved._id.toString(),
+        id: saved.id,
         filename: saved.filename,
         url: saved.url,
         size: saved.size,
@@ -262,7 +374,14 @@ export async function POST(req: NextRequest) {
         createdAt: saved.createdAt,
       });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      // Cloudinary rejects with a plain object ({ message, http_code }), not an
+      // Error, so String(err) would produce "[object Object]".
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message: unknown }).message)
+            : String(err);
       savedFiles.push({
         id: null,
         filename: file.name,

@@ -3,7 +3,11 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { CircleAlertIcon, CircleCheckIcon, CloudIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
+import AppHeader from "@/components/AppHeader";
+import AppFooter from "@/components/AppFooter";
+import { Spinner } from "@/components/ui/spinner";
 
 function VerifyEmailPageContent() {
   const params = useSearchParams();
@@ -33,7 +37,7 @@ function VerifyEmailPageContent() {
         const data = await res.json().catch(() => ({}));
 
         if (res.ok) {
-          showToast("success", data.message || "Email verified!");
+          showToast("success", data.message || "Email verified.");
           setStatus("success");
           setMsg(data.message || "Email verified.");
 
@@ -57,40 +61,59 @@ function VerifyEmailPageContent() {
   }, [token, showToast]);
 
   return (
-    <main className="home-landing min-h-screen d-flex align-items-center justify-content-center px-4 py-5">
-      <div className="card shadow-lg" style={{ width: "400px", padding: "3rem 2rem", borderRadius: "12px" }} >
-        <div className="text-center">
-          <h2 className="mb-4">Verify Email</h2>
+    <div className="flex min-h-dvh flex-col">
+      <AppHeader />
+
+      <main className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[400px] rounded-2xl border bg-card p-8 text-center text-card-foreground shadow-xl sm:p-12">
+          <span className="mx-auto mb-4 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <CloudIcon className="size-4" />
+          </span>
+
+          <h2 className="mb-4 font-heading text-xl font-bold tracking-tight">
+            Verify email
+          </h2>
 
           {status === "loading" && (
             <div>
-              <div
-                className="spinner-border text-primary mb-3"
-                role="status"
-                style={{ width: "3rem", height: "3rem" }}
-              >
-                <span className="visually-hidden">Loading...</span>
+              <div className="mb-3 flex justify-center">
+                <Spinner className="size-6" />
               </div>
-              <p className="text-muted">Verifying your email...</p>
+              <p className="text-sm text-muted-foreground">Verifying your email...</p>
             </div>
           )}
 
-          {status === "success" && (
+          {(status === "success" || status === "error") && (
             <div>
-              <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>✅</div>
-              <div className="alert alert-success mb-0">{msg}</div>
-            </div>
-          )}
-
-          {status === "error" && (
-            <div>
-              <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>❌</div>
-              <div className="alert alert-danger mb-0">{msg}</div>
+              <div
+                className={`mx-auto mb-3 flex size-11 items-center justify-center rounded-full ${
+                  status === "success"
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    : "bg-destructive/10 text-destructive"
+                }`}
+              >
+                {status === "success" ? (
+                  <CircleCheckIcon className="size-6" />
+                ) : (
+                  <CircleAlertIcon className="size-6" />
+                )}
+              </div>
+              <p
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  status === "success"
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                }`}
+              >
+                {msg}
+              </p>
             </div>
           )}
         </div>
-      </div>
-    </main>
+      </main>
+
+      <AppFooter />
+    </div>
   );
 }
 
@@ -98,13 +121,9 @@ export default function VerifyEmailPage() {
   return (
     <Suspense
       fallback={
-        <div className=" home-landing min-h-screen d-flex align-items-center justify-content-center px-4 py-5">
-          <div className="card shadow-lg" style={{ width: "400px", padding: "3rem 2rem", borderRadius: "12px" }} >
-            <div className="text-center">
-              <div className="spinner-border text-primary" role="status" style={{ width: "3rem", height: "3rem" }} >
-                <span className="visually-hidden">Loading...</span>
-              </div>
-            </div>
+        <div className="flex min-h-dvh items-center justify-center px-4 py-5">
+          <div className="w-full max-w-[400px] rounded-2xl border bg-card p-8 text-center shadow-xl sm:p-12">
+            <Spinner className="size-6" />
           </div>
         </div>
       }

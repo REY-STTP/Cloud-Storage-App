@@ -2,9 +2,28 @@
 "use client";
 
 import { FormEvent, useEffect, useState, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import {
+  AlertCircleIcon,
+  ArrowLeftIcon,
+  LogOutIcon,
+  MailIcon,
+  UserIcon,
+} from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
+import AppNavbar from "@/components/AppNavbar";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Profile {
   id: string;
@@ -13,6 +32,39 @@ interface Profile {
   role: "USER" | "ADMIN";
   verified: boolean;
   createdAt: string;
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="grid gap-4 md:grid-cols-3" aria-hidden="true">
+      <Card className="md:col-span-1">
+        <CardContent className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-[55%]" />
+          <Skeleton className="h-3 w-[80%]" />
+          <Skeleton className="h-3 w-[70%]" />
+          <Skeleton className="h-3 w-[45%]" />
+        </CardContent>
+      </Card>
+      <Card className="md:col-span-2">
+        <CardContent className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-[30%]" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function ProfilePageContent() {
@@ -57,14 +109,16 @@ function ProfilePageContent() {
 
   useEffect(() => {
     loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const v = params?.get("verified");
     if (v === "1") {
-      showToast("success", "Email verified successfully!");
+      showToast("success", "Email verified successfully.");
       loadProfile();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
   async function handleDeleteAccount() {
@@ -76,7 +130,7 @@ function ProfilePageContent() {
       cancelLabel: "Cancel",
       danger: true,
     })
-    
+
     if (!ok) return;
 
     try {
@@ -100,7 +154,7 @@ function ProfilePageContent() {
 
   async function requestVerificationEmail() {
     if (!profile) return;
-    const ok = confirm({
+    const ok = await confirm({
       title: "Send verification email?",
       description: `Send a verification email to ${profile.email}? Check your inbox (and spam) after sending.`,
       confirmLabel: "Send email",
@@ -188,189 +242,224 @@ function ProfilePageContent() {
   }
 
   return (
-    <main className="home-landing app-shell">
-      <nav className="navbar navbar-expand-lg px-4 navbar-dark bg-dark">
-        <span className="navbar-brand">User Profile</span>
-        <div className="ms-auto d-flex gap-2">
-          <a href="/dashboard" className="btn btn-outline-light btn-sm">
-            Back to Dashboard
-          </a>
-          <button className="btn btn-outline-light btn-sm" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </nav>
+    <main className="min-h-dvh">
+      <AppNavbar title="Profile">
+        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/dashboard" />}>
+          <ArrowLeftIcon data-icon="inline-start" />
+          <span className="hidden sm:inline">Dashboard</span>
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <LogOutIcon data-icon="inline-start" />
+          <span className="hidden sm:inline">Logout</span>
+        </Button>
+      </AppNavbar>
 
-      <div className="container app-shell-main">
-        <div className="app-section-header">
-          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] shadow-sm">
-              <span>👤</span> Account settings
-            </span>
-          </div>
-          <h1 className="app-section-title mb-1">Profile & security</h1>
-          <p className="app-section-subtitle mb-0">Update your personal information and manage your password.</p>
+      <div className="mx-auto w-full max-w-6xl px-4 py-8">
+        <div className="mb-6">
+          <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+            <UserIcon className="size-3" />
+            Account settings
+          </span>
+          <h1 className="font-heading text-2xl font-bold tracking-tight">
+            Profile &amp; security
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Update your personal information and manage your password.
+          </p>
         </div>
 
         {loading ? (
-          <div className="text-center py-5">
-            <div className="spinner-border text-primary" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-          </div>
+          <ProfileSkeleton />
         ) : !profile ? (
-          <div className="alert alert-danger">Profile not found.</div>
+          <Alert variant="destructive">
+            <AlertCircleIcon />
+            <AlertTitle>Profile not found</AlertTitle>
+            <AlertDescription>Please sign in again to view your profile.</AlertDescription>
+          </Alert>
         ) : (
-          <div className="row g-4">
-            <div className="col-md-4">
-              <div className="landing-card shadow-lg border-0 p-4 h-100">
-                <h5 className="mb-3 fw-bold">Account overview</h5>
-
-                <div className="landing-mini-card rounded-3 p-3 mb-3">
-                  <p className="text-muted small mb-1">
-                    Email : <strong>{profile.email.toLowerCase()}</strong>
-                  </p>
-                  <p className="text-muted small mb-1">
-                    Role : <strong>{profile.role}</strong>
-                  </p>
-                  <p className="text-muted small mb-0">
-                    Joined: {new Date(profile.createdAt).toLocaleString("en-US")}
-                  </p>
-                </div>
-
-                <div className="mb-3">
-                  <h6 className="mb-2 fw-semibold">Verification</h6>
-                  <div className="d-flex align-items-center gap-2">
-                    {profile.verified ? (
-                      <span className="badge bg-success px-3 py-2" style={{ fontSize: "0.7rem" }}>
-                        ✔ VERIFIED
-                      </span>
-                    ) : (
-                      <>
-                        <span 
-                          className="badge bg-warning text-dark" 
-                          style={{ 
-                            fontSize: "0.7rem",
-                            padding: "0.5rem 0.75rem"
-                          }}
-                        >
-                          ⚠ NOT VERIFIED
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          onClick={requestVerificationEmail}
-                          disabled={requestLoading}
-                          style={{ 
-                            fontSize: "0.65rem",
-                            padding: "0.35rem 0.65rem",
-                            whiteSpace: "nowrap"
-                          }}
-                        >
-                          {requestLoading ? "Sending..." : "Request Verification"}
-                        </button>
-                      </>
-                    )}
+          <div className="grid gap-4 md:grid-cols-3">
+            {/* Account overview */}
+            <Card className="h-full md:col-span-1">
+              <CardContent>
+                <div className="mb-4 flex items-center gap-3">
+                  <Avatar className="size-12">
+                    <AvatarFallback>{getInitials(profile.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <div className="truncate font-bold tracking-tight">{profile.name}</div>
+                    <div className="truncate text-sm text-muted-foreground">
+                      {profile.email.toLowerCase()}
+                    </div>
                   </div>
                 </div>
 
-                <p className="text-muted small mb-2">• Your email is used for login and cannot be changed here.</p>
-                <p className="text-muted small mb-2">• Use a strong password and keep it private.</p>
+                <div className="mb-3 space-y-2 rounded-xl border bg-muted/40 p-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Role</span>
+                    <span className="font-semibold">
+                      {profile.role === "ADMIN" ? "Admin" : "User"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Status</span>
+                    {profile.verified ? (
+                      <Badge variant="secondary">Verified</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+                        Unverified
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="tnum flex justify-between">
+                    <span className="text-muted-foreground">Joined</span>
+                    <span className="font-semibold">
+                      {new Date(profile.createdAt).toLocaleDateString("en-US")}
+                    </span>
+                  </div>
+                </div>
 
-                <hr />
+                {!profile.verified && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mb-3 w-full"
+                    onClick={requestVerificationEmail}
+                    disabled={requestLoading}
+                  >
+                    {requestLoading ? (
+                      <>
+                        <Spinner data-icon="inline-start" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <MailIcon data-icon="inline-start" />
+                        Request verification
+                      </>
+                    )}
+                  </Button>
+                )}
 
-                <p className="text-muted small mb-2 mt-2">Need to leave this service?</p>
-                <button
+                <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
+                  · Your email is used for login and cannot be changed here.
+                </p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  · Use a strong password and keep it private.
+                </p>
+
+                <Separator className="my-4" />
+
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Need to leave this service?
+                </p>
+                <Button
                   type="button"
-                  className="btn btn-outline-danger w-100"
+                  variant="destructive"
+                  className="w-full"
                   onClick={handleDeleteAccount}
                   disabled={saving}
                 >
-                  Delete Account
-                </button>
-              </div>
-            </div>
+                  Delete account
+                </Button>
+              </CardContent>
+            </Card>
 
-            <div className="col-md-8">
-              <div className="landing-card shadow-lg border-0 p-4">
-                <h5 className="mb-3 fw-bold">Edit profile</h5>
-
+            {/* Edit profile */}
+            <Card className="h-full md:col-span-2">
+              <CardHeader>
+                <CardTitle>Edit profile</CardTitle>
+                <CardDescription>Update your name, or change your password.</CardDescription>
+              </CardHeader>
+              <CardContent>
                 <form onSubmit={handleSubmit}>
-                  <div className="mb-3">
-                    <label className="form-label">Name</label>
-                    <input
-                      className="form-control"
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <hr className="my-3" />
-
-                  <p className="small text-muted mb-2">
-                    If you want to change your password, fill in these fields. Otherwise, you can leave them empty.
-                  </p>
-
-                  <div className="mb-3">
-                    <label className="form-label">Current password</label>
-                    <div className="input-group">
-                      <input
-                        className="form-control"
-                        type={showCurrent ? "text" : "password"}
-                        value={currentPassword}
-                        onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder="Enter current password"
+                  <div className="flex max-w-[420px] flex-col gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="profile-name">Name</Label>
+                      <Input
+                        id="profile-name"
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
                       />
-                      <button type="button" className="btn btn-outline-secondary" onClick={() => setShowCurrent((p) => !p)}>
-                        {showCurrent ? "Hide" : "Show"}
-                      </button>
+                    </div>
+
+                    <Separator className="my-1" />
+
+                    <p className="text-xs text-muted-foreground">
+                      If you want to change your password, fill in these fields. Otherwise, you can leave them empty.
+                    </p>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="profile-current">Current password</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="profile-current"
+                          type={showCurrent ? "text" : "password"}
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          placeholder="Enter current password"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowCurrent((p) => !p)}
+                        >
+                          {showCurrent ? "Hide" : "Show"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      <Link href="/forgot-password" className="text-primary hover:underline">
+                        Forgot password?
+                      </Link>
+                    </p>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="profile-new">New password</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="profile-new"
+                          type={showNew ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="New password (optional)"
+                        />
+                        <Button type="button" variant="outline" onClick={() => setShowNew((p) => !p)}>
+                          {showNew ? "Hide" : "Show"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="profile-confirm">Confirm new password</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="profile-confirm"
+                          type={showConfirm ? "text" : "password"}
+                          value={confirmNewPassword}
+                          onChange={(e) => setConfirmNewPassword(e.target.value)}
+                          placeholder="Repeat new password"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowConfirm((p) => !p)}
+                        >
+                          {showConfirm ? "Hide" : "Show"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
-                  <p className="mt-3 text-right text-muted small">
-                    <a href="/forgot-password">Forgot Password?</a>
-                  </p>
-
-                  <div className="mb-3">
-                    <label className="form-label">New password</label>
-                    <div className="input-group">
-                      <input
-                        className="form-control"
-                        type={showNew ? "text" : "password"}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="New password (optional)"
-                      />
-                      <button type="button" className="btn btn-outline-secondary" onClick={() => setShowNew((p) => !p)}>
-                        {showNew ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Confirm new password</label>
-                    <div className="input-group">
-                      <input
-                        className="form-control"
-                        type={showConfirm ? "text" : "password"}
-                        value={confirmNewPassword}
-                        onChange={(e) => setConfirmNewPassword(e.target.value)}
-                        placeholder="Repeat new password"
-                      />
-                      <button type="button" className="btn btn-outline-secondary" onClick={() => setShowConfirm((p) => !p)}>
-                        {showConfirm ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button type="submit" className="btn btn-primary w-100" disabled={saving}>
+                  <Button type="submit" disabled={saving} className="mt-4">
+                    {saving && <Spinner data-icon="inline-start" />}
                     {saving ? "Saving..." : "Save changes"}
-                  </button>
+                  </Button>
                 </form>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>
@@ -380,15 +469,13 @@ function ProfilePageContent() {
 
 export default function ProfilePage() {
   return (
-    <Suspense fallback={
-      <div className="home-landing app-shell">
-        <div className="container app-shell-main text-center py-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
+    <Suspense
+      fallback={
+        <div className="flex min-h-dvh items-center justify-center">
+          <Spinner className="size-6" />
         </div>
-      </div>
-    }>
+      }
+    >
       <ProfilePageContent />
     </Suspense>
   );

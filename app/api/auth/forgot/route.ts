@@ -1,7 +1,7 @@
 // app/api/auth/forgot/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
+import { query } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rate-limit";
 import {
   createTransporter,
   generateToken,
@@ -12,10 +12,10 @@ import {
 
 export const runtime = "nodejs";
 
+const RESEND_COOLDOWN_MS = 60_000;
+
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
-
     const body = await req.json().catch(() => ({}));
     const email = (body.email || "").toString().trim().toLowerCase();
 
@@ -23,12 +23,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Email is required" }, { status: 400 });
     }
 
-    const user = await User.findOne({ email }).exec();
+    // Batasi permintaan link reset per alamat email (anti-spam & anti-enumeration).
+    const limit = checkRateLimit(`forgot:${email}`, RESEND_COOLDOWN_MS);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { message: `Please wait ${limit.retryAfterSeconds}s before requesting another reset link` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+      );
+    }
+
+    const result = await query<{ id: string; email: string }>(
+      "select id, email from users where email = $1 limit 1",
+      [email]
+    );
+    const user = result.rows[0];
     if (!user) {
       return NextResponse.json({ message: "Email is not registered" }, { status: 404 });
     }
 
-    const resetToken = generateToken(user.email, user._id.toString(), "password-reset");
+    const resetToken = generateToken(user.email, user.id, "password-reset");
 
     let transporterInfo;
     try {

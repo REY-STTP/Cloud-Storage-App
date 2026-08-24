@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
+import { query } from "@/lib/db";
 import { hashPassword, signJwt } from "@/lib/auth";
+import type { UserRow } from "@/lib/types";
 
 const ALLOWED_DOMAINS = [
   "gmail.com",
@@ -35,28 +35,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
-
-    const already = await User.findOne({ email });
-    if (already) {
+    const already = await query<{ id: string }>(
+      "select id from users where email = $1 limit 1",
+      [email]
+    );
+    if (already.rowCount && already.rowCount > 0) {
       return NextResponse.json({ message: "Email is already in use" }, { status: 400 });
     }
 
     const hashed = await hashPassword(password);
 
-    const user = await User.create({
-      name,
-      email,
-      password: hashed,
-      role: "USER",
-      verified: false,
-      banned: false,
-    });
+    const result = await query<UserRow>(
+      `insert into users (name, email, password, role, verified, banned)
+       values ($1, $2, $3, 'USER', false, false)
+       returning id, name, email, role, verified, banned`,
+      [name, email, hashed]
+    );
 
-    const token = signJwt({ userId: user._id.toString(), role: user.role });
+    const user = result.rows[0];
+
+    const token = signJwt({ userId: user.id, role: user.role });
 
     const res = NextResponse.json({
-      id: user._id.toString(),
+      id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,

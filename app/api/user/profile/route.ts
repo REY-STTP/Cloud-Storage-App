@@ -1,53 +1,12 @@
 // app/api/user/profile/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
-import { File as FileModel } from "@/models/File";
+import { query } from "@/lib/db";
 import { verifyJwt, hashPassword, comparePassword } from "@/lib/auth";
-import { v2 as cloudinary } from "cloudinary";
+import { jsonNoStore } from "@/lib/http";
+import { deleteObject } from "@/lib/storage";
+import type { UserRow } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
-
-async function safeDestroy(publicId: string, file?: any) {
-  const mime = (file && (file.resourceType || file.mimeType || file.format || file.type)) || "";
-  const tryList: string[] = [];
-
-  if (mime) {
-    const m = String(mime).toLowerCase();
-    if (m.startsWith("image/")) tryList.push("image");
-    else if (m.startsWith("video/")) tryList.push("video");
-    else if (m.includes("javascript")) tryList.push("javascript");
-    else if (m.includes("css")) tryList.push("css");
-    else tryList.push("raw");
-  }
-
-  ["raw", "image", "video", "javascript", "css"].forEach((t) => {
-    if (!tryList.includes(t)) tryList.push(t);
-  });
-
-  let lastErr: any = null;
-  for (const resource_type of tryList) {
-    try {
-      const res = await cloudinary.uploader.destroy(publicId, { resource_type });
-      return { ok: true, result: res, resource_type };
-    } catch (err: any) {
-      lastErr = err;
-      const msg = err?.message || "";
-      if (err?.http_code === 400 && msg.includes("Invalid resource type")) {
-        continue;
-      }
-      return { ok: false, error: String(err), resource_type };
-    }
-  }
-
-  return { ok: false, error: String(lastErr) || "destroy failed", resource_type: null };
-}
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get("token")?.value;
@@ -57,16 +16,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
-  const user = await User.findById(payload.userId);
+  const result = await query<UserRow>(
+    `select id, name, email, password, role, verified, banned, created_at as "createdAt", updated_at as "updatedAt"
+     from users where id = $1 limit 1`,
+    [payload.userId]
+  );
+  const user = result.rows[0];
 
   if (!user) {
     return NextResponse.json({ message: "User not found" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    id: user._id.toString(),
+  return jsonNoStore({
+    id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
@@ -84,8 +46,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
   const body = await req.json();
   const { name, currentPassword, newPassword } = body as {
     name?: string;
@@ -93,16 +53,23 @@ export async function PATCH(req: NextRequest) {
     newPassword?: string;
   };
 
-  const user = await User.findById(payload.userId);
+  const result = await query<UserRow>(
+    `select id, name, email, password, role, verified, banned, created_at as "createdAt", updated_at as "updatedAt"
+     from users where id = $1 limit 1`,
+    [payload.userId]
+  );
+  const user = result.rows[0];
 
   if (!user) {
     return NextResponse.json({ message: "User not found" }, { status: 404 });
   }
 
+  let newName = user.name;
   if (name && name.trim().length > 0) {
-    user.name = name.trim();
+    newName = name.trim();
   }
 
+  let newPasswordHash: string | null = null;
   if (newPassword) {
     if (!currentPassword) {
       return NextResponse.json(
@@ -123,18 +90,27 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    user.password = await hashPassword(newPassword);
+    newPasswordHash = await hashPassword(newPassword);
   }
 
-  await user.save();
+  const updated = await query<UserRow>(
+    `update users set
+       name = $2,
+       password = coalesce($3, password)
+     where id = $1
+     returning id, name, email, role, verified, banned`,
+    [payload.userId, newName, newPasswordHash]
+  );
+
+  const updatedUser = updated.rows[0];
 
   return NextResponse.json({
-    id: user._id.toString(),
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    verified: user.verified,
-    banned: user.banned,
+    id: updatedUser.id,
+    name: updatedUser.name,
+    email: updatedUser.email,
+    role: updatedUser.role,
+    verified: updatedUser.verified,
+    banned: updatedUser.banned,
   });
 }
 
@@ -146,35 +122,36 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  await connectDB();
-
   const userId = payload.userId;
 
-  const files = await FileModel.find({ owner: userId }).lean();
+  const filesResult = await query<{ id: string; publicId: string | null }>(
+    `select id, public_id as "publicId" from files where owner = $1`,
+    [userId]
+  );
+  const files = filesResult.rows;
 
-  const cloudinaryResults = await Promise.all(
-    files.map(async (file: any) => {
-      if (!file.publicId) return { ok: false, id: file._id, reason: "no-publicId" };
+  const storageResults = await Promise.all(
+    files.map(async (file) => {
+      if (!file.publicId) return { ok: false, id: file.id, reason: "no-key" };
       try {
-        const r = await safeDestroy(file.publicId, file);
-        if (r.ok) return { ok: true, id: file._id, result: r.result, resource_type: r.resource_type };
-        return { ok: false, id: file._id, error: r.error, resource_type: r.resource_type };
+        await deleteObject(file.publicId);
+        return { ok: true, id: file.id };
       } catch (err) {
-        console.warn(`Failed to delete ${file.publicId} from Cloudinary:`, err);
-        return { ok: false, id: file._id, error: String(err) };
+        console.warn(`Failed to delete ${file.publicId} from storage:`, err);
+        return { ok: false, id: file.id, error: err instanceof Error ? err.message : String(err) };
       }
     })
   );
 
-  const fileDeleteResult = await FileModel.deleteMany({ owner: userId });
+  const fileDeleteResult = await query("delete from files where owner = $1", [userId]);
 
-  const userDeleteResult = await User.findByIdAndDelete(userId);
+  const userDeleteResult = await query("delete from users where id = $1", [userId]);
 
   const res = NextResponse.json({
     message: "Account deleted",
-    userDeleted: !!userDeleteResult,
-    filesDeletedCount: fileDeleteResult.deletedCount ?? 0,
-    cloudinaryResults,
+    userDeleted: (userDeleteResult.rowCount ?? 0) > 0,
+    filesDeletedCount: fileDeleteResult.rowCount ?? 0,
+    storageResults,
   });
 
   res.cookies.set("token", "", {

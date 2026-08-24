@@ -1,8 +1,7 @@
 // app/api/auth/reset/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
+import { query } from "@/lib/db";
 import jwt from "jsonwebtoken";
 import { verifyToken } from "@/lib/mail";
 
@@ -10,8 +9,6 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
-
     const body = await req.json().catch(() => ({}));
     const token = (body.token || "").toString().trim();
     const password = (body.password || "").toString();
@@ -40,25 +37,29 @@ export async function POST(req: NextRequest) {
 
     const email = decoded.email;
 
-    const user = await User.findOne({ email }).exec();
+    const result = await query<{ password: string }>(
+      "select password from users where email = $1 limit 1",
+      [email]
+    );
+    const user = result.rows[0];
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 400 });
     }
 
-    const oldPassword = (user as any).password;
-    const isSamePassword = await bcrypt.compare(password, oldPassword);
-    
+    const isSamePassword = await bcrypt.compare(password, user.password);
+
     if (isSamePassword) {
-      return NextResponse.json({ 
-        message: "New password must be different from old password" 
+      return NextResponse.json({
+        message: "New password must be different from old password"
       }, { status: 400 });
     }
 
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    (user as any).password = hashedPassword;
-    await user.save();
+    await query("update users set password = $1 where email = $2", [
+      hashedPassword,
+      email,
+    ]);
 
     return NextResponse.json({ message: "Password has been reset successfully" });
   } catch (err) {
@@ -66,4 +67,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }
-

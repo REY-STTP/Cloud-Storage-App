@@ -3,13 +3,20 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { KeyRoundIcon, UserIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
+import AuthShell from "@/components/AuthShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { showToast } = useToast()
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const { showToast } = useToast();
+  const [email, setEmail] = useState("admin@example.com");
+  const [password, setPassword] = useState("Admin123!");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,105 +57,112 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
-      <div className="max-w-5xl w-full grid gap-10 md:grid-cols-2 items-center">
-        <section className="d-none d-md-block">
-          <div className="mb-3">
-            <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] shadow-sm">
-              Welcome back 👋
-            </span>
-          </div>
-          <h1 className="fw-bold fs-3 mb-2">Sign in and manage your cloud files</h1>
-          <p className="text-muted small mb-3">
+    <AuthShell
+      left={
+        <>
+          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+            <UserIcon className="size-3" />
+            Welcome back
+          </span>
+          <h1 className="mb-2 max-w-[24ch] font-heading text-2xl font-bold tracking-tight">
+            Sign in and manage your cloud files
+          </h1>
+          <p className="mb-4 max-w-[44ch] text-sm text-muted-foreground">
             Use your account to upload, rename, download, and delete files
             from your personal dashboard. Admins can also manage users and
             clean up data.
           </p>
 
-          <div className="row g-2 text-muted small">
-            <div className="col-12">
-              <div className="landing-mini-card rounded-3 p-3 h-100">
-                <div className="fw-semibold mb-1">🔐 Secure login</div>
-                <div>
-                  JWT-based authentication with protected routes for User
-                  and Admin dashboards.
-                </div>
+          <div className="flex gap-3 rounded-xl border bg-card p-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground">
+              <KeyRoundIcon className="size-4" />
+            </span>
+            <div>
+              <div className="text-sm font-semibold">Secure login</div>
+              <div className="text-sm text-muted-foreground">
+                JWT-based authentication with protected routes for user and
+                admin dashboards.
               </div>
             </div>
           </div>
-        </section>
+        </>
+      }
+      card={
+        <>
+          <div className="mb-4">
+            <span className="mb-3 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <KeyRoundIcon className="size-4" />
+            </span>
+            <h2 className="mb-1 font-heading text-xl font-bold tracking-tight">
+              Login
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Enter your email and password to continue.
+            </p>
+          </div>
 
-        <section className="d-flex justify-content-center">
-          <div
-            className="card landing-card shadow-2xl border-0 w-100"
-            style={{ maxWidth: 420 }}
-          >
-            <div className="card-body">
-              <div className="d-flex flex-column align-items-center mb-3">
-                <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs mb-2 font-medium uppercase tracking-[0.15em] shadow-sm">
-                  Cloud Storage App
-                </span>
-                <h2 className="card-title mb-1 text-center fw-bold">Login</h2>
-                <p className="text-muted small mb-0 text-center">
-                  Enter your email and password to continue.
-                </p>
+          <form onSubmit={handleSubmit}>
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="login-email">Email</Label>
+                <Input
+                  id="login-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                  placeholder="you@example.com"
+                  required
+                />
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <div className="mb-3">
-                  <label className="form-label">Email</label>
-                  <input
-                    className="form-control"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value.toLowerCase())}
-                    placeholder="you@example.com"
+              <div className="grid gap-2">
+                <Label htmlFor="login-password">Password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="login-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
                     required
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </Button>
                 </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Password</label>
-                  <div className="input-group">
-                    <input
-                      className="form-control"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Minimum 6 characters"
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                    >
-                      {showPassword ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100 mt-1"
-                  disabled={loading}
-                >
-                  {loading ? "Loading..." : "Login"}
-                </button>
-              </form>
-
-              <p className="mt-3 text-center text-muted small">
-                <a href="/forgot-password">Forgot Password?</a>
-              </p>
-
-              <p className="mt-3 text-center text-muted small">
-                Don&apos;t have an account yet?{" "}
-                <a href="/register">Register</a>
-              </p>
+              </div>
             </div>
+
+            {error && (
+              <p className="mt-3 text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" disabled={loading} className="mt-4 w-full">
+              {loading && <Spinner data-icon="inline-start" />}
+              {loading ? "Signing in..." : "Login"}
+            </Button>
+          </form>
+
+          <div className="mt-4 text-center text-sm">
+            <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground">
+              Forgot password?
+            </Link>
           </div>
-        </section>
-      </div>
-    </main>
+
+          <p className="mt-3 text-center text-sm text-muted-foreground">
+            Don&apos;t have an account yet?{" "}
+            <Link href="/register" className="text-primary hover:underline">
+              Register
+            </Link>
+          </p>
+        </>
+      }
+    />
   );
 }

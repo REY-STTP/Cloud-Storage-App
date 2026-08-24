@@ -1,50 +1,13 @@
 // app/api/admin/users/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
-import { File as FileModel } from "@/models/File";
+import { query } from "@/lib/db";
 import { verifyJwt } from "@/lib/auth";
-import { v2 as cloudinary } from "cloudinary";
+import { deleteObject } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
-
-async function safeDestroy(publicId: string, file?: any) {
-  const mime = (file && (file.mimeType || file.format || file.type)) || "";
-  const tryList: string[] = [];
-
-  if (mime) {
-    const m = String(mime).toLowerCase();
-    if (m.startsWith("image/")) tryList.push("image");
-    else if (m.startsWith("video/")) tryList.push("video");
-    else if (m.includes("javascript")) tryList.push("javascript");
-    else if (m.includes("css")) tryList.push("css");
-    else tryList.push("raw");
-  }
-
-  ["raw", "image", "video", "javascript", "css"].forEach((t) => {
-    if (!tryList.includes(t)) tryList.push(t);
-  });
-
-  let lastErr: any = null;
-  for (const resource_type of tryList) {
-    try {
-      const res = await cloudinary.uploader.destroy(publicId, { resource_type });
-      return { ok: true, result: res, resource_type };
-    } catch (err: any) {
-      lastErr = err;
-      const msg = err?.message || "";
-      if (err?.http_code === 400 && msg.includes("Invalid resource type")) continue;
-      return { ok: false, error: String(err), resource_type };
-    }
-  }
-
-  return { ok: false, error: String(lastErr) || "destroy failed", resource_type: null };
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 export async function PATCH(
@@ -60,7 +23,9 @@ export async function PATCH(
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  await connectDB();
+  if (!isUuid(id)) {
+    return NextResponse.json({ message: "User not found" }, { status: 404 });
+  }
 
   const body = (await req.json()) as {
     name?: string;
@@ -69,27 +34,43 @@ export async function PATCH(
     banned?: boolean;
   };
 
-  const update: any = {};
-  if (body.name !== undefined) update.name = body.name;
-  if (body.role !== undefined) update.role = body.role;
-  if (body.verified !== undefined) update.verified = body.verified;
-  if (body.banned !== undefined) update.banned = body.banned;
+  const updated = await query<{
+    id: string;
+    name: string;
+    email: string;
+    role: "USER" | "ADMIN";
+    verified: boolean;
+    banned: boolean;
+  }>(
+    `update users set
+       name = coalesce($2, name),
+       role = coalesce($3, role),
+       verified = coalesce($4, verified),
+       banned = coalesce($5, banned)
+     where id = $1
+     returning id, name, email, role, verified, banned`,
+    [
+      id,
+      body.name !== undefined ? body.name : null,
+      body.role !== undefined ? body.role : null,
+      body.verified !== undefined ? body.verified : null,
+      body.banned !== undefined ? body.banned : null,
+    ]
+  );
 
-  const updated = await User.findByIdAndUpdate(id, update, {
-    new: true,
-  }).select("_id name email role banned verified");
+  const updatedUser = updated.rows[0];
 
-  if (!updated) {
+  if (!updatedUser) {
     return NextResponse.json({ message: "User not found" }, { status: 404 });
   }
 
   return NextResponse.json({
-    id: updated._id.toString(),
-    name: updated.name,
-    email: updated.email,
-    role: updated.role,
-    verified: updated.verified,
-    banned: updated.banned,
+    id: updatedUser.id,
+    name: updatedUser.name,
+    email: updatedUser.email,
+    role: updatedUser.role,
+    verified: updatedUser.verified,
+    banned: updatedUser.banned,
   });
 }
 
@@ -106,34 +87,39 @@ export async function DELETE(
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  await connectDB();
+  if (!isUuid(id)) {
+    return NextResponse.json({ message: "User not found" }, { status: 404 });
+  }
 
   try {
-    const files = await FileModel.find({ owner: id }).lean();
+    const filesResult = await query<{ id: string; publicId: string | null }>(
+      `select id, public_id as "publicId" from files where owner = $1`,
+      [id]
+    );
+    const files = filesResult.rows;
 
-    const cloudinaryResults = await Promise.all(
-      files.map(async (file: any) => {
-        if (!file.publicId) return { ok: false, id: file._id, reason: "no-publicId" };
+    const storageResults = await Promise.all(
+      files.map(async (file) => {
+        if (!file.publicId) return { ok: false, id: file.id, reason: "no-key" };
         try {
-          const r = await safeDestroy(file.publicId, file);
-          if (r.ok) return { ok: true, id: file._id, result: r.result, resource_type: r.resource_type };
-          return { ok: false, id: file._id, error: r.error, resource_type: r.resource_type };
+          await deleteObject(file.publicId);
+          return { ok: true, id: file.id };
         } catch (err) {
-          console.warn(`Failed to delete ${file.publicId} from Cloudinary:`, err);
-          return { ok: false, id: file._id, error: String(err) };
+          console.warn(`Failed to delete ${file.publicId} from storage:`, err);
+          return { ok: false, id: file.id, error: err instanceof Error ? err.message : String(err) };
         }
       })
     );
 
-    const fileDeleteResult = await FileModel.deleteMany({ owner: id });
+    const fileDeleteResult = await query("delete from files where owner = $1", [id]);
 
-    const userDeleteResult = await User.findByIdAndDelete(id);
+    const userDeleteResult = await query("delete from users where id = $1", [id]);
 
     return NextResponse.json({
       message: "User deleted",
-      userDeleted: !!userDeleteResult,
-      filesDeletedCount: fileDeleteResult.deletedCount ?? 0,
-      cloudinaryResults,
+      userDeleted: (userDeleteResult.rowCount ?? 0) > 0,
+      filesDeletedCount: fileDeleteResult.rowCount ?? 0,
+      storageResults,
     });
   } catch (err) {
     console.error("DELETE /api/admin/users/:id error", err);

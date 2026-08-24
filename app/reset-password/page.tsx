@@ -2,12 +2,19 @@
 "use client";
 
 import { FormEvent, useEffect, useState, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import { ArrowLeftIcon, CloudIcon, KeyRoundIcon, ShieldIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
+import AuthShell from "@/components/AuthShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 
 function ResetPasswordPageContent() {
   const router = useRouter();
-  const { showToast } = useToast()
+  const { showToast } = useToast();
   const searchParams = useSearchParams();
   const tokenFromQuery = searchParams?.get("token") || "";
   const [token, setToken] = useState(tokenFromQuery);
@@ -16,7 +23,7 @@ function ResetPasswordPageContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
   useEffect(() => {
     setToken(tokenFromQuery);
   }, [tokenFromQuery]);
@@ -64,109 +71,119 @@ function ResetPasswordPageContent() {
   }
 
   return (
-    <main className="home-landing min-h-screen flex items-center justify-center px-4 py-10">
-      <div className="max-w-5xl w-full grid gap-10 md:grid-cols-2 items-center">
-        <section className="d-none d-md-block">
-          <div className="mb-3">
-            <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] shadow-sm">
-              Reset password
-            </span>
-          </div>
-          <h1 className="fw-bold fs-3 mb-2">Set a new password</h1>
-          <p className="text-muted small mb-3">
-            Choose a strong password and confirm it. After success you will be redirected to login.
+    <AuthShell
+      left={
+        <>
+          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+            <KeyRoundIcon className="size-3" />
+            Reset password
+          </span>
+          <h1 className="mb-2 max-w-[24ch] font-heading text-2xl font-bold tracking-tight">
+            Set a new password
+          </h1>
+          <p className="mb-4 max-w-[44ch] text-sm text-muted-foreground">
+            Choose a strong password and confirm it. After success you will be
+            redirected to login.
           </p>
 
-          <div className="landing-mini-card rounded-3 p-3 h-100 text-muted small">
-            <div className="fw-semibold mb-1">Tips</div>
-            <ul className="mb-0">
+          <div className="rounded-xl border bg-card p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              <ShieldIcon className="size-3.5 text-muted-foreground" />
+              Tips for a strong password
+            </div>
+            <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
               <li>Use at least 8 characters for better security.</li>
               <li>Mix letters and numbers.</li>
               <li>Do not reuse passwords used elsewhere.</li>
             </ul>
           </div>
-        </section>
+        </>
+      }
+      card={
+        <>
+          <div className="mb-4">
+            <span className="mb-3 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <CloudIcon className="size-4" />
+            </span>
+            <h2 className="mb-1 font-heading text-xl font-bold tracking-tight">
+              Create a new password
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Enter your new password below.
+            </p>
+          </div>
 
-        <section className="d-flex justify-content-center">
-          <div className="card landing-card shadow-2xl border-0 w-100" style={{ maxWidth: 420 }}>
-            <div className="card-body">
-              <div className="d-flex flex-column align-items-center mb-3">
-                <span className="landing-pill inline-flex items-center rounded-full px-3 py-1 text-xs mb-2 font-medium uppercase tracking-[0.15em] shadow-sm">
-                  Cloud Storage App
-                </span>
-                <h2 className="card-title mb-1 text-center fw-bold">Create a new password</h2>
-                <p className="text-muted small mb-0 text-center">Enter your new password below.</p>
+          <form onSubmit={handleSubmit}>
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="reset-password">New password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="reset-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </Button>
+                </div>
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <div className="mb-3">
-                  <label className="form-label">New Password</label>
-                  <div className="input-group">
-                    <input
-                      className="form-control"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Minimum 6 characters"
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                    >
-                      {showPassword ? "Hide" : "Show"}
-                    </button>
-                  </div>
+              <div className="grid gap-2">
+                <Label htmlFor="reset-confirm">Confirm password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="reset-confirm"
+                    type={showConfirm ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat password"
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowConfirm((prev) => !prev)}
+                  >
+                    {showConfirm ? "Hide" : "Show"}
+                  </Button>
                 </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Confirm Password</label>
-                  <div className="input-group">
-                    <input
-                      className="form-control"
-                      type={showConfirm ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Repeat password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setShowConfirm((prev) => !prev)}
-                    >
-                      {showConfirm ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="d-flex gap-2">
-                  <a className="btn btn-secondary" href="/login">Back to login</a>
-                  <button type="submit" className="btn btn-primary ms-auto" disabled={loading}>
-                    {loading ? "Resetting..." : "Reset password"}
-                  </button>
-                </div>
-              </form>
+              </div>
             </div>
-          </div>
-        </section>
-      </div>
-    </main>
+
+            <div className="flex gap-2 pt-4">
+              <Button variant="outline" nativeButton={false} render={<Link href="/login" />}>
+                <ArrowLeftIcon data-icon="inline-start" />
+                Back to login
+              </Button>
+              <Button type="submit" disabled={loading} className="ms-auto">
+                {loading && <Spinner data-icon="inline-start" />}
+                {loading ? "Resetting..." : "Reset password"}
+              </Button>
+            </div>
+          </form>
+        </>
+      }
+    />
   );
 }
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={
-      <div className="home-landing app-shell">
-        <div className="container app-shell-main text-center py-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
+    <Suspense
+      fallback={
+        <div className="flex min-h-dvh items-center justify-center">
+          <Spinner className="size-6" />
         </div>
-      </div>
-    }>
+      }
+    >
       <ResetPasswordPageContent />
     </Suspense>
   );

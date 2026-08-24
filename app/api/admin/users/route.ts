@@ -1,9 +1,8 @@
 // app/api/admin/users/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/models/User";
-import { File as FileModel } from "@/models/File";
+import { query } from "@/lib/db";
 import { verifyJwt } from "@/lib/auth";
+import { jsonNoStore } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -16,101 +15,132 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
-    await connectDB();
-
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
     const perPage = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit") || "10", 10)));
-    const skip = (page - 1) * perPage;
 
     const q = (url.searchParams.get("q") || "").trim();
-    const filter: any = {};
+
+    // ---- Keyset pagination (kursor = created_at|id baris terakhir) ----
+    let cursorTime: string | null = null;
+    let cursorId: string | null = null;
+    const cursorRaw = url.searchParams.get("cursor");
+    if (cursorRaw) {
+      try {
+        const [iso, id] = Buffer.from(cursorRaw, "base64url").toString("utf8").split("|");
+        if (
+          !Number.isNaN(Date.parse(iso || "")) &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || "")
+        ) {
+          cursorTime = iso!;
+          cursorId = id!;
+        }
+      } catch {
+        // kursor tidak valid -> halaman pertama
+      }
+    }
+    const keyset = cursorTime !== null && cursorId !== null;
+
+    // Query 1 (Opsi B): halaman user saja — murah, tanpa join.
+    const whereParts: string[] = [];
+    const values: unknown[] = [];
     if (q) {
-      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      filter.$or = [
-        { name: { $regex: escaped, $options: "i" } },
-        { email: { $regex: escaped, $options: "i" } },
-      ];
+      values.push(`%${q}%`);
+      whereParts.push(
+        `(name ilike '%' || $${values.length} || '%' or email ilike '%' || $${values.length} || '%')`
+      );
+    }
+    if (keyset) {
+      values.push(cursorTime, cursorId);
+      whereParts.push(
+        `(created_at, id) < ($${values.length - 1}::timestamptz, $${values.length}::uuid)`
+      );
+    }
+    const whereClause = whereParts.length ? `where ${whereParts.join(" and ")}` : "";
+
+    values.push(perPage + 1);
+    const pageResult = await query<{
+      id: string;
+      name: string;
+      email: string;
+      role: "USER" | "ADMIN";
+      banned: boolean;
+      verified: boolean;
+      createdAt: Date;
+    }>(
+      `select id, name, email, role, banned, verified, created_at as "createdAt"
+       from users
+       ${whereClause}
+       order by created_at desc, id desc
+       limit $${values.length}`,
+      values
+    );
+
+    const rows = pageResult.rows;
+    const hasMore = rows.length > perPage;
+    const pageRows = hasMore ? rows.slice(0, perPage) : rows;
+
+    let nextCursor: string | null = null;
+    if (hasMore && pageRows.length > 0) {
+      const last = pageRows[pageRows.length - 1];
+      nextCursor = Buffer.from(
+        `${new Date(last.createdAt).toISOString()}|${last.id}`
+      ).toString("base64url");
     }
 
-    const pipeline: any[] = [
-      { $match: filter },
-      { $sort: { createdAt: -1 } },
-      {
-        $facet: {
-          data: [
-            { $skip: skip },
-            { $limit: perPage },
-            {
-              $lookup: {
-                from: FileModel.collection.name,
-                let: { userId: "$_id" },
-                pipeline: [
-                  { $match: { $expr: { $eq: ["$owner", "$$userId"] } } },
-                  {
-                    $group: {
-                      _id: "$owner",
-                      fileCount: { $sum: 1 },
-                      totalSizeBytes: { $sum: { $ifNull: ["$size", 0] } },
-                    },
-                  },
-                ],
-                as: "stats",
-              },
-            },
-            {
-              $addFields: {
-                _computedFileCount: { $ifNull: [{ $arrayElemAt: ["$stats.fileCount", 0] }, 0] },
-                _computedTotalSize: { $ifNull: [{ $arrayElemAt: ["$stats.totalSizeBytes", 0] }, 0] },
-              },
-            },
-            {
-              $addFields: {
-                fileCount: {
-                  $cond: [{ $eq: ["$role", "ADMIN"] }, null, "$_computedFileCount"],
-                },
-                totalSizeBytes: {
-                  $cond: [{ $eq: ["$role", "ADMIN"] }, null, "$_computedTotalSize"],
-                },
-              },
-            },
-            {
-              $project: {
-                stats: 0,
-                _computedFileCount: 0,
-                _computedTotalSize: 0,
-                password: 0,
-              },
-            },
-          ],
-          totalCount: [{ $count: "count" }],
-        },
-      },
-    ];
+    // Query 2 (Opsi B): stats file untuk 10-id halaman ini dalam SATU statement.
+    const ids = pageRows.map((u) => u.id);
+    const statsMap = new Map<string, { file_count: number; total_size: number }>();
+    if (ids.length > 0) {
+      const statsResult = await query<{
+        owner: string;
+        file_count: number;
+        total_size: number;
+      }>(
+        `select owner, count(*)::int as file_count,
+                coalesce(sum(size), 0)::bigint as total_size
+         from files where owner = any($1::uuid[])
+         group by owner`,
+        [ids]
+      );
+      for (const row of statsResult.rows) {
+        statsMap.set(row.owner, row);
+      }
+    }
 
-    const agg = await User.aggregate(pipeline).exec();
-    const facet = agg && agg[0] ? agg[0] : { data: [], totalCount: [] };
-    const usersRaw = facet.data || [];
-    const total = (facet.totalCount && facet.totalCount[0] && facet.totalCount[0].count) ? facet.totalCount[0].count : 0;
+    const totalResult = await query<{ count: number }>(
+      `select count(*) as count from users
+       where ($1 = '' or name ilike '%' || $1 || '%' or email ilike '%' || $1 || '%')`,
+      [q]
+    );
 
-    const users = usersRaw.map((u: any) => ({
-      id: String(u._id),
+    const statsResult = await query<{ admins: number; banned: number }>(
+      `select
+         count(*) filter (where role = 'ADMIN') as admins,
+         count(*) filter (where banned) as banned
+       from users`
+    );
+
+    const total = Number(totalResult.rows[0]?.count ?? 0);
+    const admins = Number(statsResult.rows[0]?.admins ?? 0);
+    const banned = Number(statsResult.rows[0]?.banned ?? 0);
+
+    const users = pageRows.map((u) => ({
+      id: u.id,
       name: u.name,
       email: u.email,
       role: u.role,
       banned: !!u.banned,
       verified: u.verified,
       createdAt: u.createdAt,
-      fileCount: u.fileCount === null ? null : (typeof u.fileCount === "number" ? u.fileCount : 0),
-      totalSizeBytes: u.totalSizeBytes === null ? null : (typeof u.totalSizeBytes === "number" ? u.totalSizeBytes : 0),
+      // Admin tidak ditampilkan statnya (proteksi, perilaku lama).
+      fileCount:
+        u.role === "ADMIN" ? null : Number(statsMap.get(u.id)?.file_count ?? 0),
+      totalSizeBytes:
+        u.role === "ADMIN" ? null : Number(statsMap.get(u.id)?.total_size ?? 0),
     }));
 
-    const [admins, banned] = await Promise.all([
-      User.countDocuments({ role: "ADMIN" }),
-      User.countDocuments({ banned: true }),
-    ]);
-
-    return NextResponse.json({ users, total, admins, banned, page, perPage });
+    return jsonNoStore({ users, total, admins, banned, page, perPage, nextCursor });
   } catch (err) {
     console.error("GET /api/admin/users error", err);
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });
