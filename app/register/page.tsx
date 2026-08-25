@@ -4,7 +4,8 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CloudIcon, FolderIcon } from "lucide-react";
+import { FolderIcon } from "lucide-react";
+import BrandMark from "@/components/BrandMark";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell from "@/components/AuthShell";
 import { Button } from "@/components/ui/button";
@@ -104,7 +105,7 @@ export default function RegisterPage() {
         <>
           <div className="mb-5">
             <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
-              <CloudIcon className="size-5" />
+              <BrandMark className="size-5" />
             </span>
             <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Register

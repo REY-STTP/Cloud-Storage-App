@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Brand mark, solid white variant. For dark backgrounds / footers. -->
+  <defs>
+    <mask id="cut-w">
+      <rect width="512" height="512" fill="#fff"/>
+      <rect x="194" y="320" width="130" height="34" rx="17" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="#fff" mask="url(#cut-w)">
+    <circle cx="184" cy="288" r="72"/>
+    <circle cx="306" cy="258" r="100"/>
+    <rect x="112" y="278" width="294" height="106" rx="53"/>
+  </g>
+</svg>

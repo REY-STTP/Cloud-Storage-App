@@ -3,7 +3,8 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { CircleAlertIcon, CircleCheckIcon, CloudIcon } from "lucide-react";
+import { CircleAlertIcon, CircleCheckIcon } from "lucide-react";
+import BrandMark from "@/components/BrandMark";
 import { useToast } from "@/components/ToastProvider";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
@@ -67,7 +68,7 @@ function VerifyEmailPageContent() {
       <main className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-[400px] rounded-2xl border bg-card p-8 text-center text-card-foreground shadow-xl sm:p-12">
           <span className="mx-auto mb-4 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <CloudIcon className="size-4" />
+            <BrandMark className="size-4" />
           </span>
 
           <h2 className="mb-4 font-heading text-xl font-bold tracking-tight">

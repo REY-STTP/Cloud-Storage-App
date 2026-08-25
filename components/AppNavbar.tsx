@@ -4,7 +4,8 @@
 
 import { ReactNode, useState } from "react";
 import Link from "next/link";
-import { CloudIcon, SearchIcon, XIcon } from "lucide-react";
+import { SearchIcon, XIcon } from "lucide-react";
+import BrandMark from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -57,7 +58,7 @@ export default function AppNavbar({
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
         <Link href={brandHref} className="flex items-center gap-2.5 no-underline">
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <CloudIcon className="size-4" />
+            <BrandMark className="size-4" />
           </span>
           <span className="font-heading text-[0.95rem] font-semibold tracking-tight text-foreground">
             {title}

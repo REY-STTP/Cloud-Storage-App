@@ -3,8 +3,9 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon, CloudIcon, InfoIcon } from "lucide-react";
+import { ArrowLeftIcon, InfoIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
+import BrandMark from "@/components/BrandMark";
 import AuthShell from "@/components/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,7 +73,7 @@ export default function ForgotPasswordPage() {
         <>
           <div className="mb-5">
             <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
-              <CloudIcon className="size-5" />
+              <BrandMark className="size-5" />
             </span>
             <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Forgot password

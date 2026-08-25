@@ -4,8 +4,9 @@
 import { FormEvent, useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ArrowLeftIcon, CloudIcon, ShieldIcon } from "lucide-react";
+import { ArrowLeftIcon, ShieldIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
+import BrandMark from "@/components/BrandMark";
 import AuthShell from "@/components/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,7 +100,7 @@ function ResetPasswordPageContent() {
         <>
           <div className="mb-5">
             <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
-              <CloudIcon className="size-5" />
+              <BrandMark className="size-5" />
             </span>
             <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Create a new password

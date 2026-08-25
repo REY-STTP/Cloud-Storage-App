@@ -1,7 +1,7 @@
 // components/AppFooter.tsx
 // Public marketing footer: brand, product links, and legal links.
 import Link from "next/link";
-import { CloudIcon } from "lucide-react";
+import BrandMark from "@/components/BrandMark";
 
 export default function AppFooter() {
   return (
@@ -10,7 +10,7 @@ export default function AppFooter() {
         <div className="max-w-xs space-y-3">
           <Link href="/" className="flex items-center gap-2.5 no-underline">
             <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <CloudIcon className="size-3.5" />
+              <BrandMark className="size-3.5" />
             </span>
             <span className="font-heading text-[0.95rem] font-semibold tracking-tight text-foreground">
               Cloud Storage
