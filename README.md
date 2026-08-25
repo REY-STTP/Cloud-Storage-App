@@ -125,6 +125,7 @@ cloud-storage-app/
 │   ├── AppFooter.tsx               # Landing page footer
 │   ├── AppNavbar.tsx               # Dashboard/profile top navbar
 │   ├── AuthShell.tsx               # Shared auth page layout wrapper
+│   ├── BrandMark.tsx               # SVG cloud logo (geometric brand mark)
 │   ├── ThemeToggle.tsx             # Dark/light mode toggle button
 │   ├── ToastProvider.tsx           # Toast notification context
 │   ├── ConfirmDialogProvider.tsx   # Confirm dialog context
@@ -165,6 +166,8 @@ cloud-storage-app/
 ├── lib/
 │   ├── auth.ts                     # JWT sign/verify + bcrypt hash/compare
 │   ├── db.ts                       # Postgres pool (pg) with int8 parser
+│   ├── env.ts                      # Validated environment variables (fail-closed)
+│   ├── guards.ts                   # Centralized API route guards (auth, user, admin)
 │   ├── http.ts                     # Shared HTTP response helpers
 │   ├── mail.ts                     # Email transporter, templates, send helpers
 │   ├── rate-limit.ts               # Fixed-window in-memory rate limiter
@@ -372,6 +375,7 @@ The application uses two tables in Supabase Postgres. The full schema is in [`sc
 | `role` | `text` | `'USER'` or `'ADMIN'` (check constraint) |
 | `verified` | `boolean` | Email verification status |
 | `banned` | `boolean` | Account ban status |
+| `pwd_changed_at` | `timestamptz` | Set on password change — invalidates older JWTs |
 | `created_at` | `timestamptz` | Auto-set on insert |
 | `updated_at` | `timestamptz` | Auto-updated via trigger |
 
@@ -420,6 +424,7 @@ The application uses two tables in Supabase Postgres. The full schema is in [`sc
 | **File Access** | Files are only accessible via presigned URLs generated server-side for the authenticated owner |
 | **SQL Injection** | All queries use parameterized placeholders (`$1`, `$2`, …) — no string concatenation |
 | **Brute Force** | Fixed-window rate limiter on login (1 attempt per key per 60s window) |
+| **Password-Change Invalidation** | Sessions issued before the last password change are rejected (`pwd_changed_at > iat`) |
 | **PostgREST Lockdown** | RLS enabled with zero policies; `anon` and `authenticated` roles have all privileges revoked |
 | **Email Tokens** | Verification and reset tokens expire in 1 hour and are single-use JWT |
 | **UUID Validation** | All route parameters are validated against UUID regex before reaching the database |
