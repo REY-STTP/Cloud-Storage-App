@@ -37,7 +37,13 @@ export default function AppFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/dashboard" className="transition-colors hover:text-foreground">
+                {/* prefetch={false}: jangan prefetch saat belum login, agar proxy
+                    tidak menyimpan redirect /dashboard -> /login di router cache. */}
+                <Link
+                  href="/dashboard"
+                  prefetch={false}
+                  className="transition-colors hover:text-foreground"
+                >
                   Your drive
                 </Link>
               </li>

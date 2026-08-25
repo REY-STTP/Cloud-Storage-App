@@ -24,7 +24,7 @@ export default function NotFound() {
           <HouseIcon data-icon="inline-start" />
           Back to home
         </Button>
-        <Button variant="outline" nativeButton={false} render={<Link href="/dashboard" />}>
+        <Button variant="outline" nativeButton={false} render={<Link href="/dashboard" prefetch={false} />}>
           Go to your drive
         </Button>
       </div>

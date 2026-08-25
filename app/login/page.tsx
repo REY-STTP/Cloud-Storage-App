@@ -2,7 +2,6 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { KeyRoundIcon } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
@@ -13,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function LoginPage() {
-  const router = useRouter();
   const { showToast } = useToast();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("Admin123!");
@@ -41,9 +39,11 @@ export default function LoginPage() {
         showToast("error", msg);
       } else {
         showToast("success", "Login successful. Redirecting...");
+        // Hard navigation, bukan router.push: menghindari Router Cache yang
+        // bisa menyimpan hasil redirect proxy (/dashboard -> /login) dari
+        // prefetch saat user masih logout, sehingga login terasa "stuck".
         setTimeout(() => {
-          if (data.role === "ADMIN") router.push("/admin");
-          else router.push("/dashboard");
+          window.location.href = data.role === "ADMIN" ? "/admin" : "/dashboard";
         }, 900);
       }
     } catch (e) {
