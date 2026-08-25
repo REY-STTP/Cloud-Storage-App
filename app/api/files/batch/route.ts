@@ -1,8 +1,7 @@
 // app/api/files/batch/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyJwt } from "@/lib/auth";
-import { getUserById } from "@/lib/users";
+import { requireUser } from "@/lib/guards";
 import { deleteObject } from "@/lib/storage";
 import type { FileRow } from "@/lib/types";
 
@@ -18,12 +17,9 @@ function toUuidList(ids: unknown[]): string[] {
 }
 
 export async function DELETE(req: NextRequest) {
-  const token = req.cookies.get("token")?.value;
-  const payload = token ? verifyJwt(token) : null;
-
-  if (!payload) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireUser(req);
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
 
   try {
     const body = await req.json();
@@ -38,20 +34,12 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ message: "No files found" }, { status: 404 });
     }
 
-    const actor = await getUserById(payload.userId);
-    if (!actor) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 });
-    }
-    if (actor.banned) {
-      return NextResponse.json({ message: "Your account has been banned" }, { status: 403 });
-    }
-
     const filesResult = await query<FileRow>(
       `select id, filename, original_name as "originalName", mime_type as "mimeType",
               resource_type as "resourceType", url, public_id as "publicId",
               size, owner, created_at as "createdAt", updated_at as "updatedAt"
        from files where id = any($1::uuid[]) and owner = $2`,
-      [uuidIds, payload.userId]
+      [uuidIds, user.id]
     );
     const files = filesResult.rows;
 
@@ -75,7 +63,7 @@ export async function DELETE(req: NextRequest) {
 
     const deleteResult = await query(
       "delete from files where id = any($1::uuid[]) and owner = $2",
-      [uuidIds, payload.userId]
+      [uuidIds, user.id]
     );
     const deletedCount = deleteResult.rowCount ?? 0;
 

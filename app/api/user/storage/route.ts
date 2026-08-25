@@ -1,25 +1,21 @@
 // app/api/user/storage/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { query } from "@/lib/db";
-import { verifyJwt } from "@/lib/auth";
+import { requireUser } from "@/lib/guards";
 import { jsonNoStore } from "@/lib/http";
 
 const MAX_STORAGE_BYTES =
   Number(process.env.MAX_STORAGE_BYTES ?? 1073741824);
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get("token")?.value;
-  const payload = token ? verifyJwt(token) : null;
-
-  if (!payload) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireUser(req);
+  if (!guard.ok) return guard.response;
 
   const result = await query<{ totalSize: number }>(
     // sum() over bigint returns numeric, which pg would hand back as a string;
     // the ::bigint cast lets the int8 parser in lib/db.ts return a real number.
     'select coalesce(sum(size), 0)::bigint as "totalSize" from files where owner = $1',
-    [payload.userId]
+    [guard.user.id]
   );
 
   const usedBytes = Number(result.rows[0]?.totalSize ?? 0);

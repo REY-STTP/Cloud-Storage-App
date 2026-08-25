@@ -11,6 +11,8 @@ export interface UserRow {
   role: Role;
   verified: boolean;
   banned: boolean;
+  /** M-2: timestamp perubahan password terakhir — JWT dengan iat lebih lama ditolak. */
+  pwdChangedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

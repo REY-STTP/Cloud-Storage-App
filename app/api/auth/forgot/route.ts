@@ -38,7 +38,10 @@ export async function POST(req: NextRequest) {
     );
     const user = result.rows[0];
     if (!user) {
-      return NextResponse.json({ message: "Email is not registered" }, { status: 404 });
+      // M-1: respons generik — jangan bocorkan bahwa email tidak terdaftar.
+      return NextResponse.json({
+        message: "If an account exists for this email, a reset link has been sent.",
+      });
     }
 
     const resetToken = generateToken(user.email, user.id, "password-reset");
@@ -63,8 +66,9 @@ export async function POST(req: NextRequest) {
       sendInfo = await sendPasswordResetEmail(transporter, email, resetToken);
     } catch (sendErr) {
       console.error("sendPasswordResetEmail failed:", sendErr);
-      if ((sendErr as any).response) {
-        console.error("SMTP response:", (sendErr as any).response);
+      const smtpResponse = (sendErr as { response?: unknown }).response;
+      if (smtpResponse) {
+        console.error("SMTP response:", smtpResponse);
       }
       return NextResponse.json({ message: "Failed to send reset email" }, { status: 500 });
     }

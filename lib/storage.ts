@@ -63,6 +63,8 @@ export function buildObjectKey(filename: string): string {
 }
 
 /** URL kanonik untuk disimpan ke kolom files.url (bukan link download). */
+
+/** URL kanonik untuk disimpan ke kolom files.url (bukan link download). */
 export function canonicalUrl(key: string): string {
   if (PUBLIC_BASE_URL) return `${PUBLIC_BASE_URL}/${key}`;
   return `https://${ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET}/${key}`;
@@ -82,12 +84,20 @@ export async function putObject(
 /**
  * Link download yang bisa dipakai browser: presigned GET (bucket privat),
  * atau URL publik langsung jika R2_PUBLIC_BASE_URL diset.
+ * H-3 pelengkap: `ResponseContentDisposition: attachment` memaksa browser
+ * mengunduh alih-alih me-render inline — file berbahaya (mis. SVG ber-script,
+ * meski kini sudah ditolak saat upload) tidak dieksekusi di origin kita.
  */
 export async function getDownloadUrl(key: string): Promise<string> {
+  const filename = key.split("/").pop() ?? "file";
   if (PUBLIC_BASE_URL) return `${PUBLIC_BASE_URL}/${key}`;
   return getSignedUrl(
     s3(),
-    new GetObjectCommand({ Bucket: BUCKET, Key: key }),
+    new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      ResponseContentDisposition: `attachment; filename="${filename}"`,
+    }),
     { expiresIn: DOWNLOAD_URL_TTL_SECONDS }
   );
 }

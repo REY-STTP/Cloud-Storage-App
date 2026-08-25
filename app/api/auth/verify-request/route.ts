@@ -1,6 +1,7 @@
 // app/api/auth/verify-request/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { verifyJwt } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   createTransporter,
@@ -24,8 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Email is required" }, { status: 400 });
     }
 
-    // Batasi pengiriman ulang email verifikasi per alamat email.
-    const limit = checkRateLimit(`verify:${email || "cookie"}`, RESEND_COOLDOWN_MS);
+    // Batasi pengiriman ulang email verifikasi. L-4: key dari userId cookie
+    // saat email tidak diisi — sebelumnya semua user berbagi bucket "cookie".
+    let rateKey = email;
+    if (!rateKey && tokenCookie) {
+      const payload = verifyJwt(tokenCookie);
+      if (payload) rateKey = payload.userId;
+    }
+    const limit = checkRateLimit(`verify:${rateKey || "anon"}`, RESEND_COOLDOWN_MS);
     if (!limit.allowed) {
       return NextResponse.json(
         { message: `Please wait ${limit.retryAfterSeconds}s before requesting another verification email` },
@@ -38,12 +45,12 @@ export async function POST(req: NextRequest) {
       [email]
     );
     const user = result.rows[0];
-    if (!user) {
-      return NextResponse.json({ message: "Email is not registered" }, { status: 404 });
-    }
+    const genericMessage =
+      "If an account exists for this email and is not yet verified, a verification link has been sent.";
 
-    if (user.verified) {
-      return NextResponse.json({ message: "Account already verified" }, { status: 400 });
+    if (!user || user.verified) {
+      // M-1: respons generik — jangan bocorkan keberadaan/status akun.
+      return NextResponse.json({ message: genericMessage });
     }
 
     const verifyToken = generateToken(user.email, user.id, "email-verify");

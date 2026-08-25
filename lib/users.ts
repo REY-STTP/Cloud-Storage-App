@@ -11,6 +11,7 @@ import type { UserRow } from "@/lib/types";
 export async function getUserById(userId: string): Promise<UserRow | null> {
   const result = await query<UserRow>(
     `select id, name, email, password, role, verified, banned,
+            pwd_changed_at as "pwdChangedAt",
             created_at as "createdAt", updated_at as "updatedAt"
      from users where id = $1 limit 1`,
     [userId]

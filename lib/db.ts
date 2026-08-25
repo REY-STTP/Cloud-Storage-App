@@ -20,11 +20,15 @@ declare global {
 }
 
 function createPool(): pg.Pool {
+  // M-8: TLS selalu aktif, namun verifikasi sertifikat ketat bersifat opt-in
+  // karena Supabase pooler memakai chain yang tidak ada di trust store Node
+  // (terbukti gagal saat audit). Cara benar mengaktifkan strict:
+  //   DATABASE_SSL_STRICT=true + unduh CA Supabase lalu set NODE_EXTRA_CA_CERTS.
+  const sslDisabled = process.env.DATABASE_SSL_DISABLED === "true";
+  const strict = process.env.DATABASE_SSL_STRICT === "true";
   return new pg.Pool({
     connectionString: DATABASE_URL,
-    ssl: process.env.DATABASE_SSL_DISABLED === "true"
-      ? false
-      : { rejectUnauthorized: false },
+    ssl: sslDisabled ? false : { rejectUnauthorized: strict },
     max: Number(process.env.DATABASE_POOL_MAX ?? 10),
   });
 }

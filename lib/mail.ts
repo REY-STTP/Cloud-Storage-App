@@ -1,8 +1,7 @@
 // lib/mail.ts
 import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this";
+import { JWT_SECRET } from "@/lib/env";
 
 export type TransporterInfo = {
   transporter: nodemailer.Transporter;

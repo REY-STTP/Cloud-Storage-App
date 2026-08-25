@@ -1,8 +1,7 @@
 // app/api/files/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyJwt } from "@/lib/auth";
-import { getUserById } from "@/lib/users";
+import { requireUser } from "@/lib/guards";
 import { deleteObject, getDownloadUrl } from "@/lib/storage";
 import type { FileRow } from "@/lib/types";
 
@@ -24,18 +23,17 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const token = req.cookies.get("token")?.value;
-  const payload = token ? verifyJwt(token) : null;
-
-  if (!payload) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
+  // requireUser: user banned langsung ditolak (sebelumnya download lolos
+  // sampai token expire — temuan H-1).
+  const guard = await requireUser(req);
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
 
   if (!isUuid(id)) {
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  const result = await query<FileRow>(FILE_SELECT, [id, payload.userId]);
+  const result = await query<FileRow>(FILE_SELECT, [id, user.id]);
   const file = result.rows[0];
 
   if (!file || !file.publicId) {
@@ -61,12 +59,9 @@ export async function PATCH(
 ) {
   const { id } = await params;
 
-  const token = req.cookies.get("token")?.value;
-  const payload = token ? verifyJwt(token) : null;
-
-  if (!payload) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireUser(req);
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
 
   const body = await req.json().catch(() => ({}));
   const filename = body?.filename;
@@ -78,20 +73,10 @@ export async function PATCH(
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  // Banned users keep read access until their token expires, but may not
-  // modify anything.
-  const actor = await getUserById(payload.userId);
-  if (!actor) {
-    return NextResponse.json({ message: "User not found" }, { status: 404 });
-  }
-  if (actor.banned) {
-    return NextResponse.json({ message: "Your account has been banned" }, { status: 403 });
-  }
-
   const updated = await query<FileRow>(
     `update files set filename = $3 where id = $1 and owner = $2
      returning id, filename, created_at as "createdAt"`,
-    [id, payload.userId, filename]
+    [id, user.id, filename]
   );
   const file = updated.rows[0];
 
@@ -112,26 +97,15 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  const token = req.cookies.get("token")?.value;
-  const payload = token ? verifyJwt(token) : null;
-
-  if (!payload) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireUser(req);
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
 
   if (!isUuid(id)) {
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  const actor = await getUserById(payload.userId);
-  if (!actor) {
-    return NextResponse.json({ message: "User not found" }, { status: 404 });
-  }
-  if (actor.banned) {
-    return NextResponse.json({ message: "Your account has been banned" }, { status: 403 });
-  }
-
-  const result = await query<FileRow>(FILE_SELECT, [id, payload.userId]);
+  const result = await query<FileRow>(FILE_SELECT, [id, user.id]);
   const file = result.rows[0];
 
   if (!file) {
@@ -139,7 +113,7 @@ export async function DELETE(
   }
 
   async function deleteRow() {
-    await query("delete from files where id = $1 and owner = $2", [id, payload!.userId]);
+    await query("delete from files where id = $1 and owner = $2", [id, user.id]);
   }
 
   if (!file.publicId) {

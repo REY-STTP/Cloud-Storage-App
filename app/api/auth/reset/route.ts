@@ -54,12 +54,14 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    await query("update users set password = $1 where email = $2", [
-      hashedPassword,
-      email,
-    ]);
+    // M-2: catat waktu ganti password — semua sesi JWT lama (iat lebih kecil)
+    // otomatis invalid lewat pengecekan di lib/guards.ts.
+    await query(
+      "update users set password = $1, pwd_changed_at = now() where email = $2",
+      [hashedPassword, email]
+    );
 
     return NextResponse.json({ message: "Password has been reset successfully" });
   } catch (err) {

@@ -2,13 +2,12 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import type { Role } from "@/lib/types";
+import { JWT_SECRET } from "@/lib/env";
 
 export type { Role };
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET is not set");
-}
+/** Cost bcrypt baru (OWASP merekomendasikan ≥12 untuk bcryptjs). */
+export const BCRYPT_COST = 12;
 
 export interface JwtPayload {
   userId: string;
@@ -28,7 +27,7 @@ export function verifyJwt(token: string): JwtPayload | null {
 }
 
 export async function hashPassword(plain: string) {
-  return bcrypt.hash(plain, 10);
+  return bcrypt.hash(plain, BCRYPT_COST);
 }
 
 export async function comparePassword(plain: string, hash: string) {

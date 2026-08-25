@@ -14,6 +14,8 @@ create table if not exists users (
   role text not null default 'USER' check (role in ('USER', 'ADMIN')),
   verified boolean not null default false,
   banned boolean not null default false,
+  -- M-2: sesi JWT dengan iat < pwd_changed_at ditolak (invalid setelah ganti password).
+  pwd_changed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

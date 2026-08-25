@@ -1,25 +1,25 @@
 // app/api/admin/users/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyJwt } from "@/lib/auth";
+import { requireAdmin } from "@/lib/guards";
 import { jsonNoStore } from "@/lib/http";
+import { escapeLike } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    const token = req.cookies.get("token")?.value;
-    const payload = token ? verifyJwt(token) : null;
-
-    if (!payload || payload.role !== "ADMIN") {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    }
+    // Role dicek dari baris DB (bukan klaim JWT) — admin yang di-demote
+    // langsung kehilangan akses (temuan H-1).
+    const guard = await requireAdmin(req);
+    if (!guard.ok) return guard.response;
 
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
     const perPage = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit") || "10", 10)));
 
-    const q = (url.searchParams.get("q") || "").trim();
+    // L-2: escape wildcard LIKE dari input user.
+    const q = escapeLike((url.searchParams.get("q") || "").trim());
 
     // ---- Keyset pagination (kursor = created_at|id baris terakhir) ----
     let cursorTime: string | null = null;
@@ -113,6 +113,7 @@ export async function GET(req: NextRequest) {
        where ($1 = '' or name ilike '%' || $1 || '%' or email ilike '%' || $1 || '%')`,
       [q]
     );
+
 
     const statsResult = await query<{ admins: number; banned: number }>(
       `select

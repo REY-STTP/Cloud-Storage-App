@@ -1,7 +1,7 @@
 // app/api/admin/users/batch/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyJwt } from "@/lib/auth";
+import { requireAdmin } from "@/lib/guards";
 import { deleteObject } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -16,12 +16,9 @@ function toUuidList(ids: unknown[]): string[] {
 }
 
 export async function PATCH(req: NextRequest) {
-  const token = req.cookies.get("token")?.value;
-  const payload = token ? verifyJwt(token) : null;
-
-  if (!payload || payload.role !== "ADMIN") {
-    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-  }
+  // Role dari DB, bukan JWT (temuan H-1).
+  const guard = await requireAdmin(req);
+  if (!guard.ok) return guard.response;
 
   try {
     const body = await req.json();
@@ -63,12 +60,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const token = req.cookies.get("token")?.value;
-  const payload = token ? verifyJwt(token) : null;
-
-  if (!payload || payload.role !== "ADMIN") {
-    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-  }
+  const guard = await requireAdmin(req);
+  if (!guard.ok) return guard.response;
 
   try {
     const body = await req.json();

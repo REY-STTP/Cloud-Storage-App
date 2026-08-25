@@ -16,14 +16,25 @@ if (!DATABASE_URL) {
 
 const pool = new pg.Pool({
   connectionString: DATABASE_URL,
+  // M-8: selaras lib/db.ts — strict TLS opt-in via DATABASE_SSL_STRICT=true
+  // (+ NODE_EXTRA_CA_CERTS dengan CA Supabase).
   ssl: process.env.DATABASE_SSL_DISABLED === "true"
     ? false
-    : { rejectUnauthorized: false },
+    : { rejectUnauthorized: process.env.DATABASE_SSL_STRICT === "true" },
 });
 
 async function main() {
   const email = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
   const password = process.env.ADMIN_PASSWORD || "Admin123!";
+
+  // L-6: jangan pernah jalankan dengan password default di production.
+  if (
+    process.env.NODE_ENV === "production" &&
+    (!process.env.ADMIN_PASSWORD || password === "Admin123!")
+  ) {
+    console.error("Refusing to seed: set a strong ADMIN_PASSWORD in production.");
+    process.exit(1);
+  }
 
   const existing = await pool.query("select id from users where email = $1 limit 1", [email]);
   if (existing.rowCount && existing.rowCount > 0) {
@@ -40,8 +51,8 @@ async function main() {
   );
 
   console.log("Admin created:");
-  console.log("Email   :", email);
-  console.log("Password:", password);
+  console.log("Email:", email);
+  console.log("(password tidak ditampilkan — lihat ADMIN_PASSWORD di .env.local)");
 }
 
 main()
