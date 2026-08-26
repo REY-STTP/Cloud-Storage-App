@@ -73,7 +73,7 @@ export default function ForgotPasswordPage() {
         <>
           <div className="mb-5">
             <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-card">
-              <BrandMark className="size-5" />
+              <BrandMark className="size-7" />
             </span>
             <h2 className="mb-1 font-heading text-2xl font-semibold tracking-tight">
               Forgot password

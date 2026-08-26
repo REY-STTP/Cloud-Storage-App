@@ -43,7 +43,7 @@ export default function AdminSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" tooltip="Admin workspace" render={<Link href="/admin" />}>
               <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <BrandMark className="size-4" />
+                <BrandMark className="size-6" />
               </span>
               <span className="flex flex-col leading-tight">
                 <span className="font-heading text-sm font-semibold tracking-tight">Cloud Storage</span>
