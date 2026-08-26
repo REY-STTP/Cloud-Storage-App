@@ -2,7 +2,8 @@
 // Logo brand: awan geometris dengan slot negatif space di bawahnya
 // ("slot drive tempat file masuk"). Menggambar pakai currentColor supaya
 // bisa dipakai di dalam chip bg-primary (putih) maupun di atas background
-// lain. Ukuran dikontrol lewat className, default mengikuti ikon lucide.
+// lain. Ukuran dikontrol lewat className (mis. size-6 / size-7 menyesuaikan
+// chip-nya). Default size-4 dipakai kalau pemanggil tidak memberi className.
 import { cn } from "@/lib/utils";
 
 export default function BrandMark({ className }: { className?: string }) {

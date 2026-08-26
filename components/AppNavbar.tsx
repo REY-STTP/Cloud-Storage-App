@@ -57,7 +57,7 @@ export default function AppNavbar({
     <nav className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
         <Link href={brandHref} className="flex items-center gap-2.5 no-underline">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <BrandMark className="size-6" />
           </span>
           <span className="font-heading text-[0.95rem] font-semibold tracking-tight text-foreground">

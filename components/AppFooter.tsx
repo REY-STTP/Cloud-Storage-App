@@ -9,7 +9,7 @@ export default function AppFooter() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10 sm:px-8 md:flex-row md:items-start md:justify-between">
         <div className="max-w-xs space-y-3">
           <Link href="/" className="flex items-center gap-2.5 no-underline">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <BrandMark className="size-6" />
             </span>
             <span className="font-heading text-[0.95rem] font-semibold tracking-tight text-foreground">
