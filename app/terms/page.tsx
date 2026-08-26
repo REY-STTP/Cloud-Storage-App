@@ -5,7 +5,9 @@ import AppFooter from "@/components/AppFooter";
 
 export const metadata: Metadata = {
   title: "Terms",
-  description: "The terms that govern your use of Cloud Storage.",
+  description: "The plain-language terms that govern your use of Cloud Storage.",
+  keywords: ["terms of service", "terms of use", "cloud storage terms"],
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

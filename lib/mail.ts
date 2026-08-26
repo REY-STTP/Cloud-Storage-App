@@ -2,6 +2,7 @@
 import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/env";
+import { siteConfig } from "@/lib/site";
 
 export type TransporterInfo = {
   transporter: nodemailer.Transporter;
@@ -79,9 +80,9 @@ export function getSenderEmail(): string {
 }
 
 export function getBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL || "http://localhost:3000"
-  );
+  // Share the single source of truth with SEO metadata (lib/site.ts), which
+  // reads NEXT_PUBLIC_SITE_URL and falls back to localhost.
+  return siteConfig.url;
 }
 
 /* ============================================================

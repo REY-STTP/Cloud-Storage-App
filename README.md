@@ -264,7 +264,7 @@ R2_FOLDER=cloud-storage-app           # Optional prefix inside the bucket
 R2_PUBLIC_BASE_URL=
 
 # ──────────────── Base URL ────────────────
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
 > **💡 Tip:** If you don't configure SMTP, the app automatically falls back to [Ethereal Email](https://ethereal.email/) in development — preview URLs are logged to the console.

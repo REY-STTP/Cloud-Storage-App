@@ -6,7 +6,10 @@ import AppFooter from "@/components/AppFooter";
 
 export const metadata: Metadata = {
   title: "Privacy",
-  description: "How Cloud Storage handles your data and files.",
+  description:
+    "How Cloud Storage handles your data and files — a private bucket, expiring links, and hashed credentials.",
+  keywords: ["privacy policy", "data privacy", "file privacy", "cloud storage privacy"],
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {

@@ -8,6 +8,7 @@ import { ConfirmDialogProvider } from "@/components/ConfirmDialogProvider";
 import { SwrProvider } from "@/components/SwrProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { siteConfig } from "@/lib/site";
 
 const geistSans = Geist({
   subsets: ["latin"],
@@ -25,18 +26,67 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteConfig.url),
+  applicationName: siteConfig.name,
   title: {
-    default: "Cloud Storage — Your files, kept private",
-    template: "%s — Cloud Storage",
+    default: `${siteConfig.name} — ${siteConfig.tagline}`,
+    template: `%s — ${siteConfig.name}`,
   },
-  description:
-    "A private personal cloud drive. Upload, rename, download, and delete your files from a clean dashboard — every download is an expiring link, and admins keep their own separate space.",
+  description: siteConfig.description,
+  keywords: [
+    "cloud storage",
+    "private cloud drive",
+    "secure file storage",
+    "encrypted file sharing",
+    "expiring download links",
+    "personal cloud",
+    "file backup",
+    "presigned URLs",
+    "private bucket storage",
+    "self-hosted file storage",
+  ],
+  authors: [{ name: siteConfig.name }],
+  creator: siteConfig.name,
+  publisher: siteConfig.name,
+  category: "technology",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
-    title: "Cloud Storage — Your files, kept private",
-    description:
-      "A private personal cloud drive with role-based access. Files stay in a sealed private bucket; downloads are expiring links.",
     type: "website",
+    locale: siteConfig.locale,
+    url: siteConfig.url,
+    siteName: siteConfig.name,
+    title: `${siteConfig.name} — ${siteConfig.tagline}`,
+    description: siteConfig.description,
   },
+  twitter: {
+    card: "summary_large_image",
+    title: `${siteConfig.name} — ${siteConfig.tagline}`,
+    description: siteConfig.description,
+    ...(siteConfig.twitterHandle
+      ? { site: siteConfig.twitterHandle, creator: siteConfig.twitterHandle }
+      : {}),
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  ...(siteConfig.googleVerification
+    ? { verification: { google: siteConfig.googleVerification } }
+    : {}),
 };
 
 export default function RootLayout({

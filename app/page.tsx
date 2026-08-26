@@ -21,6 +21,7 @@ import Reveal from "@/components/landing/Reveal";
 import PinnedPrivacy from "@/components/landing/PinnedPrivacy";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { siteConfig } from "@/lib/site";
 
 const marqueeFacts = [
   "Presigned links that expire in 60 minutes",
@@ -32,6 +33,77 @@ const marqueeFacts = [
   "Role-separated admin space",
   "Quota shown in plain numbers",
 ];
+
+// FAQ content — kept as plain, extractable prose so both search engines and
+// generative AI engines (GEO) can quote concise, factual answers. The same
+// data backs the FAQPage structured data below.
+const faqs: { q: string; a: string }[] = [
+  {
+    q: "Is Cloud Storage actually private?",
+    a: "Yes. Your files are kept in a private object-storage bucket with no public URLs. There is no permanent link that points at your data — not for you and not for anyone else.",
+  },
+  {
+    q: "How do the expiring download links work?",
+    a: "Every time you download a file, the app mints a signed URL that stops working after 60 minutes. If a link leaks, it ages out on its own, so there are no permanent public URLs to worry about.",
+  },
+  {
+    q: "Do I need a credit card to sign up?",
+    a: "No. Every account starts with 1 GB of free storage and includes email verification. No credit card is required to create an account.",
+  },
+  {
+    q: "Can administrators see my files?",
+    a: "No. Admins manage accounts — banning, unbanning, and removing users — from a separate, role-gated dashboard. They cannot access user files, and admin accounts are kept out of the regular user space.",
+  },
+  {
+    q: "How are my password and sessions protected?",
+    a: "Passwords are bcrypt-hashed, sessions are signed JWTs stored in http-only cookies, and sign-in is rate-limited. The API enforces access itself, so the database is never directly exposed.",
+  },
+  {
+    q: "What if I forget my password?",
+    a: "You can request a password reset by email. A reset link is sent to your verified address so you can choose a new password.",
+  },
+];
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: siteConfig.name,
+  url: siteConfig.url,
+  description: siteConfig.description,
+};
+
+const appJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: siteConfig.name,
+  url: siteConfig.url,
+  applicationCategory: "UtilitiesApplication",
+  operatingSystem: "Web",
+  description: siteConfig.description,
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  featureList: [
+    "Private object-storage bucket with no public URLs",
+    "Download links that expire after 60 minutes",
+    "Bulk upload, inline rename, and batch ZIP download",
+    "Email verification and email password reset",
+    "Role-separated admin dashboard",
+    "JWT sessions in http-only cookies and bcrypt-hashed passwords",
+  ],
+};
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map(({ q, a }) => ({
+    "@type": "Question",
+    name: q,
+    acceptedAnswer: { "@type": "Answer", text: a },
+  })),
+};
 
 export default function Home() {
   return (
@@ -299,6 +371,31 @@ export default function Home() {
           </PinnedPrivacy>
         </div>
 
+        {/* Desire → Trust — FAQ, plain extractable prose (GEO) */}
+        <Reveal className="mx-auto w-full max-w-3xl px-5 py-24 sm:px-8 md:py-32">
+          <h2
+            data-reveal
+            className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
+          >
+            Questions, answered plainly
+          </h2>
+          <p data-reveal className="mt-3 max-w-[52ch] leading-relaxed text-muted-foreground">
+            The privacy mechanics aren&rsquo;t fine print. Here is exactly how
+            Cloud Storage keeps your files yours.
+          </p>
+
+          <div data-reveal className="mt-10 divide-y rounded-2xl border bg-card shadow-card">
+            {faqs.map(({ q, a }) => (
+              <div key={q} className="px-6 py-5 sm:px-7">
+                <h3 className="text-lg font-semibold tracking-tight">{q}</h3>
+                <p className="mt-2 max-w-[60ch] leading-relaxed text-muted-foreground">
+                  {a}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+
         {/* Action — closing CTA */}
         <Reveal className="mx-auto w-full max-w-6xl px-5 py-24 sm:px-8 md:py-32">
           <div
@@ -334,6 +431,20 @@ export default function Home() {
       </main>
 
       <AppFooter />
+
+      {/* Structured data for search and generative engines (SEO + GEO). */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(appJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
     </div>
   );
 }
