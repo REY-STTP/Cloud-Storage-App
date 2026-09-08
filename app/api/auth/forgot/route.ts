@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await query<{ id: string; email: string }>(
-      "select id, email from users where email = $1 limit 1",
+    const result = await query<{ id: string; email: string; pwdChangedAt: Date | null }>(
+      'select id, email, pwd_changed_at as "pwdChangedAt" from users where email = $1 limit 1',
       [email]
     );
     const user = result.rows[0];
@@ -44,7 +44,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const resetToken = generateToken(user.email, user.id, "password-reset");
+    // Snapshot untuk single-use: pemakaian token menggeser pwd_changed_at,
+    // sehingga replay token yang sama langsung terdeteksi di /api/auth/reset.
+    const snapshot = user.pwdChangedAt
+      ? Math.floor(new Date(user.pwdChangedAt).getTime() / 1000)
+      : null;
+    const resetToken = generateToken(user.email, user.id, "password-reset", "1h", snapshot);
 
     let transporterInfo;
     try {

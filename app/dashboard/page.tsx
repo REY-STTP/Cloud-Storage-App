@@ -367,6 +367,9 @@ export default function DashboardPage() {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    // Intentional full reload (not router.push): the session cookie is gone
+    // and all SWR-cached user data must be dropped.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/login";
   }
 

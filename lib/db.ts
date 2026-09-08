@@ -19,6 +19,8 @@ declare global {
   var __pgPool: pg.Pool | undefined;
 }
 
+let tlsWarningLogged = false;
+
 function createPool(): pg.Pool {
   // M-8: TLS selalu aktif, namun verifikasi sertifikat ketat bersifat opt-in
   // karena Supabase pooler memakai chain yang tidak ada di trust store Node
@@ -26,6 +28,23 @@ function createPool(): pg.Pool {
   //   DATABASE_SSL_STRICT=true + unduh CA Supabase lalu set NODE_EXTRA_CA_CERTS.
   const sslDisabled = process.env.DATABASE_SSL_DISABLED === "true";
   const strict = process.env.DATABASE_SSL_STRICT === "true";
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.NEXT_PHASE !== "phase-production-build" &&
+    !sslDisabled &&
+    !strict &&
+    !tlsWarningLogged
+  ) {
+    // Kredensial DB + data user melintasi koneksi ini — non-strict berarti
+    // rentan MITM. Peringatan keras sekali per proses (bukan throw) agar
+    // deploy yang sudah berjalan tidak mati mendadak. Dilewati saat build
+    // karena pool belum tentu dipakai dan tiap worker akan mengulanginya.
+    tlsWarningLogged = true;
+    console.warn(
+      "[db] WARNING: TLS certificate verification is OFF in production. " +
+        "Set DATABASE_SSL_STRICT=true (+ NODE_EXTRA_CA_CERTS) to close MITM exposure."
+    );
+  }
   return new pg.Pool({
     connectionString: DATABASE_URL,
     ssl: sslDisabled ? false : { rejectUnauthorized: strict },

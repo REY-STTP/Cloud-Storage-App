@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import jwt from "jsonwebtoken";
 import { verifyToken } from "@/lib/mail";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Token and new password are required" }, { status: 400 });
     }
 
-    if (password.length < 6) {
-      return NextResponse.json({ message: "Password must be at least 6 characters" }, { status: 400 });
+    // Batas per-IP agar endpoint tidak bisa di-brute-force massal.
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const limit = checkRateLimit(`reset:ip:${ip}`, 60 * 60 * 1000, 20);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { message: "Too many attempts. Please try again later." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limit.retryAfterSeconds) },
+        }
+      );
+    }
+
+    // Selaras dengan registrasi (min 8): kebijakan password tidak boleh
+    // lebih longgar di jalur reset dibanding jalur daftar.
+    if (password.length < 8) {
+      return NextResponse.json({ message: "Password must be at least 8 characters" }, { status: 400 });
     }
 
     let decoded;
@@ -37,13 +54,25 @@ export async function POST(req: NextRequest) {
 
     const email = decoded.email;
 
-    const result = await query<{ password: string }>(
-      "select password from users where email = $1 limit 1",
+    const result = await query<{ password: string; pwdChangedAt: Date | null }>(
+      'select password, pwd_changed_at as "pwdChangedAt" from users where email = $1 limit 1',
       [email]
     );
     const user = result.rows[0];
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 400 });
+    }
+
+    // Single-use: token reset yang sudah dipakai menggeser pwd_changed_at,
+    // sehingga replay dalam jendela 1 jam langsung ditolak di sini.
+    if (typeof decoded.pwdc === "number" && user.pwdChangedAt) {
+      const current = Math.floor(new Date(user.pwdChangedAt).getTime() / 1000);
+      if (current > decoded.pwdc) {
+        return NextResponse.json(
+          { message: "This reset link has already been used. Please request a new one." },
+          { status: 400 }
+        );
+      }
     }
 
     const isSamePassword = await bcrypt.compare(password, user.password);

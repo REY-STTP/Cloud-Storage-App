@@ -42,7 +42,7 @@ async function main() {
     return;
   }
 
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await bcrypt.hash(password, 12);
 
   await pool.query(
     `insert into users (name, email, password, role, verified, banned)

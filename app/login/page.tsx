@@ -13,8 +13,12 @@ import { Spinner } from "@/components/ui/spinner";
 
 export default function LoginPage() {
   const { showToast } = useToast();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("Admin123!");
+  const [email, setEmail] = useState(
+    process.env.NODE_ENV !== "production" ? "admin@example.com" : ""
+  );
+  const [password, setPassword] = useState(
+    process.env.NODE_ENV !== "production" ? "Admin123!" : ""
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

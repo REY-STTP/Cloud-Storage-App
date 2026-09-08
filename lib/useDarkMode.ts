@@ -7,16 +7,23 @@ export function useDarkMode() {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const stored = localStorage.getItem("theme");
-    if (stored === "dark") {
-      document.documentElement.classList.add("dark");
-      setDark(true);
-    } else {
-      document.documentElement.classList.remove("dark");
-      setDark(false);
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem("theme");
+    } catch {
+      stored = null;
     }
+    const isDark = stored === "dark";
+    // Deferred past the effect body: one-time mount init, not a render loop.
+    queueMicrotask(() => {
+      if (isDark) {
+        document.documentElement.classList.add("dark");
+        setDark(true);
+      } else {
+        document.documentElement.classList.remove("dark");
+        setDark(false);
+      }
+    });
   }, []);
 
   function toggleTheme() {

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import jwt from "jsonwebtoken";
 import { verifyToken } from "@/lib/mail";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,19 @@ export async function POST(req: NextRequest) {
 
     if (!token) {
       return NextResponse.json({ message: "Token is required" }, { status: 400 });
+    }
+
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const limit = checkRateLimit(`verify:ip:${ip}`, 60 * 60 * 1000, 30);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { message: "Too many attempts. Please try again later." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limit.retryAfterSeconds) },
+        }
+      );
     }
 
     let decoded;

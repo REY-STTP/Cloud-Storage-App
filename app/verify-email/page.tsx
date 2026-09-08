@@ -14,14 +14,16 @@ function VerifyEmailPageContent() {
   const params = useSearchParams();
   const { showToast } = useToast();
   const token = params?.get("token") || "";
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [msg, setMsg] = useState("");
+  // Initial state derived during render (not in an effect): the token is
+  // final on first client render, so no-token shows error immediately.
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
+    token ? "idle" : "error"
+  );
+  const [msg, setMsg] = useState(token ? "" : "Invalid verification link.");
 
   useEffect(() => {
     if (!token) {
       showToast("error", "Invalid verification link.");
-      setStatus("error");
-      setMsg("Invalid verification link.");
       return;
     }
 
@@ -43,6 +45,9 @@ function VerifyEmailPageContent() {
           setMsg(data.message || "Email verified.");
 
           setTimeout(() => {
+            // Intentional full reload (not router.push): picks up the fresh
+            // session cookie and drops all client-cached auth state.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
             window.location.href = "/dashboard/profile?verified=1";
           }, 1500);
         } else {

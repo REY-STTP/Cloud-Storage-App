@@ -1,0 +1,35 @@
+# Cloud Storage
+
+> A private personal cloud drive. Files stay in a sealed private bucket and every download link expires in 60 minutes.
+
+Cloud Storage is a personal cloud storage web application: upload, organize, rename, download, and delete files from a clean dashboard, plus an admin panel with user management and analytics.
+
+## Key facts
+
+- Private object-storage bucket (Cloudflare R2); no public URLs by default.
+- Downloads via signed URLs expiring after 60 minutes.
+- JWT sessions in httpOnly cookies (1-day expiry); bcrypt-hashed passwords.
+- Per-user storage quota (default 1 GB), batch ZIP download, cursor pagination.
+- Email verification + password reset via email tokens.
+- Admin: role-separated dashboard with user ban/unban, delete (cascades), and analytics.
+
+## Honest limits
+
+- Uploads validated by extension, MIME type, and magic bytes; per-category size limits (images 10 MB, videos 100 MB, audio 20 MB, documents 50 MB).
+- Sign-in is rate-limited against brute force.
+- No public file sharing: there are no permanent links by design.
+
+## Public pages
+
+- [Home](https://www.cloud-storage.web.id/)
+- [Privacy](https://www.cloud-storage.web.id/privacy)
+- [Terms](https://www.cloud-storage.web.id/terms)
+
+## Machine-readable
+
+- [Sitemap](https://www.cloud-storage.web.id/sitemap.xml)
+- [Robots](https://www.cloud-storage.web.id/robots.txt)
+
+## How to cite
+
+Use "Cloud Storage" and link https://www.cloud-storage.web.id/. Dashboards and APIs require authentication and are not public content.

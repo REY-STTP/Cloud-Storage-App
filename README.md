@@ -2,7 +2,7 @@
 
 A full-featured, production-ready **personal cloud storage platform** built with the modern web stack. Users can securely upload, organize, rename, download, and delete files from a clean dashboard — while administrators manage the entire user base from a dedicated panel with real-time analytics.
 
-Every file lives in a **private Cloudflare R2 bucket**. Downloads are served via **presigned URLs that expire in 60 minutes** — there are no permanent public links. Authentication is powered by **JWT sessions stored in httpOnly cookies**, and passwords are hashed with **bcrypt** (10 salt rounds).
+Every file lives in a **private Cloudflare R2 bucket**. Downloads are served via **presigned URLs that expire in 60 minutes** — there are no permanent public links. Authentication is powered by **JWT sessions stored in httpOnly cookies**, and passwords are hashed with **bcrypt** (12 salt rounds).
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -36,7 +36,7 @@ Every file lives in a **private Cloudflare R2 bucket**. Downloads are served via
 - **Private Bucket** — All files are stored in a private Cloudflare R2 bucket. No public URLs exist by default.
 - **Presigned Downloads** — Each download generates a 1-hour presigned URL. Expired links cannot be reused.
 - **JWT Authentication** — Stateless sessions via signed JWTs (1-day expiry) stored in httpOnly, secure cookies.
-- **bcrypt Hashing** — Passwords are hashed with bcrypt (cost factor 10) before storage. Plain-text passwords are never persisted.
+- **bcrypt Hashing** — Passwords are hashed with bcrypt (cost factor 12) before storage. Plain-text passwords are never persisted.
 - **Rate Limiting** — Fixed-window in-memory rate limiter on sign-in to prevent brute-force attacks.
 - **Row Level Security** — Supabase RLS is enabled with zero policies, locking the PostgREST API completely. The app bypasses RLS as the table owner and enforces access in its own API routes.
 - **Input Validation** — UUID format validation, file type/size checks, and parameterized SQL queries throughout.
@@ -69,13 +69,20 @@ Every file lives in a **private Cloudflare R2 bucket**. Downloads are served via
 ```
 cloud-storage-app/
 ├── app/
-│   ├── layout.tsx                  # Root layout — fonts, providers, theme
+│   ├── layout.tsx                  # Root layout — fonts, providers, theme, verification metas
 │   ├── page.tsx                    # Landing page (hero, features, marquee)
 │   ├── not-found.tsx               # Custom 404 page
 │   ├── globals.css                 # Global styles & design tokens
+│   ├── icon.svg                    # Single-source brand mark (light/dark-proof)
+│   ├── apple-icon.png              # 180px Apple touch icon (generated from icon.svg)
+│   ├── opengraph-image.tsx         # Dynamic social preview (1200×630)
+│   ├── manifest.ts                 # PWA manifest (SVG + PNG 192/512)
+│   ├── robots.ts                   # Crawlers: public allow, auth/API disallow, 16 AI bots
+│   ├── sitemap.ts                  # Dynamic sitemap (/, privacy, terms, llms.txt)
 │   │
-│   ├── login/                      # Login page
-│   ├── register/                   # Registration page
+│   │
+│   ├── login/                      # Login page (noindex, dev-only credential prefill)
+│   ├── register/                   # Registration page (noindex)
 │   ├── forgot-password/            # Forgot password page
 │   ├── reset-password/             # Reset password page (token-based)
 │   ├── verify-email/               # Email verification page (token-based)
@@ -184,7 +191,10 @@ cloud-storage-app/
 │   ├── seed.mjs                    # Seed initial admin account
 │   └── supabase-schema.sql         # Full database schema (idempotent)
 │
-├── proxy.ts                        # Next.js middleware — route protection
+├── proxy.ts                        # Canonical-host 308 redirect first, then route protection (auth guard)
+├── public/
+│   ├── llms.txt                    # AI crawler context (linked from <head>)
+│   ├── icon-192.png / icon-512.png # Manifest raster icons (generated from icon.svg)
 ├── next.config.ts                  # Next.js configuration
 ├── tailwind.config.ts              # Tailwind CSS configuration
 ├── tsconfig.json                   # TypeScript configuration
@@ -207,8 +217,8 @@ cloud-storage-app/
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/your-username/cloud-storage-app.git
-cd cloud-storage-app
+git clone https://github.com/REY-STTP/Cloud-Storage-App.git
+cd Cloud-Storage-App
 npm install
 ```
 
@@ -417,7 +427,7 @@ The application uses two tables in Supabase Postgres. The full schema is in [`sc
 
 | Concern | Implementation |
 | :--- | :--- |
-| **Password Storage** | bcrypt with 10 salt rounds — never stored in plain text |
+| **Password Storage** | bcrypt with 12 salt rounds — never stored in plain text |
 | **Session Management** | JWT signed with `JWT_SECRET`, stored in `httpOnly` cookie, 1-day expiry |
 | **Route Protection** | `proxy.ts` middleware redirects unauthenticated requests from `/dashboard/*` and `/admin/*` to `/login` |
 | **API Authorization** | Every API route independently verifies the JWT and checks user role/status |
@@ -426,7 +436,7 @@ The application uses two tables in Supabase Postgres. The full schema is in [`sc
 | **Brute Force** | Fixed-window rate limiter on login (1 attempt per key per 60s window) |
 | **Password-Change Invalidation** | Sessions issued before the last password change are rejected (`pwd_changed_at > iat`) |
 | **PostgREST Lockdown** | RLS enabled with zero policies; `anon` and `authenticated` roles have all privileges revoked |
-| **Email Tokens** | Verification and reset tokens expire in 1 hour and are single-use JWT |
+| **Email Tokens** | Both expire in 1 hour. Reset tokens are single-use (replay detected via password-change snapshot); verification is idempotent by design |
 | **UUID Validation** | All route parameters are validated against UUID regex before reaching the database |
 
 ---
@@ -458,4 +468,4 @@ The app can be deployed to any Node.js hosting platform. Some recommendations:
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+All rights reserved.

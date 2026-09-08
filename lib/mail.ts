@@ -45,13 +45,20 @@ export function generateToken(
   email: string,
   userId: string,
   purpose: "email-verify" | "password-reset",
-  expiresIn: string | number = "1h"
+  expiresIn: string | number = "1h",
+  // Snapshot waktu ganti password (detik unix) — untuk token reset: pemakaian
+  // pertama menggeser pwd_changed_at di DB sehingga replay token yang sama
+  // terdeteksi (single-use tanpa tabel tambahan).
+  pwdChangedAtSec?: number | null
 ): string {
   return jwt.sign(
     {
       email,
       userId,
       purpose,
+      ...(pwdChangedAtSec !== undefined && pwdChangedAtSec !== null
+        ? { pwdc: pwdChangedAtSec }
+        : {}),
     },
     JWT_SECRET,
     { expiresIn } as jwt.SignOptions
@@ -62,11 +69,13 @@ export function verifyToken(token: string): {
   email: string;
   userId: string;
   purpose: string;
+  pwdc?: number;
 } {
   return jwt.verify(token, JWT_SECRET) as {
     email: string;
     userId: string;
     purpose: string;
+    pwdc?: number;
   };
 }
 

@@ -79,6 +79,13 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   formatDetection: {
     email: false,
     address: false,
@@ -86,6 +93,9 @@ export const metadata: Metadata = {
   },
   ...(siteConfig.googleVerification
     ? { verification: { google: siteConfig.googleVerification } }
+    : {}),
+  ...(siteConfig.bingVerification
+    ? { other: { "msvalidate.01": siteConfig.bingVerification } }
     : {}),
 };
 
@@ -101,6 +111,9 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
       className={cn("font-sans", geistSans.variable, geistMono.variable, outfit.variable)}
     >
+      <head>
+        <link rel="alternate" type="text/plain" title="LLMs" href="/llms.txt" />
+      </head>
       <body
         className={cn(
           geistSans.variable,
