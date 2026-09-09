@@ -4,6 +4,8 @@
 -- ============================================================
 
 create extension if not exists "pgcrypto";
+-- trigram untuk search ILIKE '%...%' di /api/admin/users.
+create extension if not exists "pg_trgm";
 
 -- ---------- USERS ----------
 create table if not exists users (
@@ -14,7 +16,7 @@ create table if not exists users (
   role text not null default 'USER' check (role in ('USER', 'ADMIN')),
   verified boolean not null default false,
   banned boolean not null default false,
-  -- M-2: sesi JWT dengan iat < pwd_changed_at ditolak (invalid setelah ganti password).
+  -- sesi JWT dengan iat < pwd_changed_at ditolak (invalid setelah ganti password).
   pwd_changed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -61,6 +63,13 @@ create index if not exists users_role_idx on users (role);
 create index if not exists users_banned_idx on users (banned);
 -- Untuk ORDER BY created_at DESC di daftar admin.
 create index if not exists users_created_at_idx on users (created_at desc);
+-- keyset pagination memakai WHERE (created_at, id) < (...) ORDER BY
+-- created_at DESC, id DESC — butuh composite agar jadi Index Scan, bukan sort.
+create index if not exists users_created_at_id_idx on users (created_at desc, id desc);
+-- ILIKE '%q%' dengan leading wildcard tidak bisa pakai btree.
+-- pg_trgm membuat '%foo%' tetap memakai index (GIN).
+create index if not exists users_name_trgm_idx on users using gin (name gin_trgm_ops);
+create index if not exists users_email_trgm_idx on users using gin (email gin_trgm_ops);
 
 -- ---------- LOCK DOWN THE PUBLIC API ----------
 -- This app talks to Postgres directly (see lib/db.ts) and enforces access in the

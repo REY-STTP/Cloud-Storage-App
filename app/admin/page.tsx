@@ -1,9 +1,15 @@
 // app/admin/page.tsx
-// Admin overview: real stats and charts drawn from the user base.
+// Admin overview: angka global dari /api/admin/stats (agregat SQL + cache
+// 30s), daftar terbaru dari /api/admin/users?limit=5.
+// P0-1: tidak ada lagi fetch limit=500 + agregat 500 rows di browser.
+// P1-1: recharts di-load on-demand via next/dynamic (ssr:false) agar tidak
+// memblokir First Paint — Card + header tetap statis, hanya chart-nya lazy.
+// P1-2: tidak ada setState di jalur render/revalidasi; turunan di-memo.
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import useSWR from "swr";
 import {
   AlertCircleIcon,
@@ -15,7 +21,6 @@ import {
   ShieldIcon,
   UsersIcon,
 } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { swrFetcher } from "@/components/SwrProvider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -29,13 +34,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Lazy: chunk recharts (~300KB) hanya diunduh setelah shell + stats tampil.
+const SignupsChart = dynamic(() => import("@/components/admin/SignupsChart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-56 w-full rounded-xl" />,
+});
+const StorageChart = dynamic(() => import("@/components/admin/StorageChart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-56 w-full rounded-xl" />,
+});
 
 interface UserItem {
   id: string;
@@ -49,11 +58,26 @@ interface UserItem {
   totalSizeBytes?: number | null;
 }
 
-interface AdminUsersResponse {
-  users: UserItem[];
+interface AdminStatsResponse {
   total: number;
   admins: number;
   banned: number;
+  verified: number;
+  unverified: number;
+  totalBytes: number;
+  totalFiles: number;
+  signupsByMonth: { month: string; users: number }[];
+  topStorage: {
+    id: string;
+    name: string;
+    fileCount: number;
+    totalSizeBytes: number;
+  }[];
+}
+
+interface AdminLatestResponse {
+  users: UserItem[];
+  total: number;
 }
 
 function formatSize(bytes: number) {
@@ -89,14 +113,6 @@ function relativeJoin(dateStr: string) {
 
 const monthLabel = new Intl.DateTimeFormat("en-US", { month: "short" });
 
-const storageConfig = {
-  size: { label: "Storage used", color: "var(--chart-2)" },
-} satisfies ChartConfig;
-
-const signupsConfig = {
-  users: { label: "New users", color: "var(--chart-1)" },
-} satisfies ChartConfig;
-
 function StatSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-hidden="true">
@@ -117,93 +133,128 @@ function StatSkeleton() {
 }
 
 export default function AdminOverview() {
-  // One call, wide limit: the overview needs the whole user base to compute honestly.
-  // Freshness stamp comes from SWR's own success callback — no effect needed.
+  // Dua fetch kecil pengganti satu fetch raksasa:
+  // - stats: 4 agregat SQL (<2KB), cache server 30s
+  // - latest: 5 rows terbaru untuk daftar signups
+  // P1-2: tanpa onSuccess->setState — revalidasi background tidak memicu
+  // render kejutan; stempel "Updated" hanya diset saat refresh manual.
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
-  const { data, isLoading, error, mutate, isValidating } = useSWR<AdminUsersResponse>(
-    "/api/admin/users?limit=500",
-    swrFetcher,
-    { onSuccess: () => setUpdatedAt(new Date()) }
+  const {
+    data: stats,
+    error: statsError,
+    mutate: mutateStats,
+    isValidating: statsValidating,
+  } = useSWR<AdminStatsResponse>("/api/admin/stats", swrFetcher, {
+    dedupingInterval: 10_000,
+    keepPreviousData: true,
+  });
+  const {
+    data: latestData,
+    error: latestError,
+    mutate: mutateLatest,
+    isValidating: latestValidating,
+  } = useSWR<AdminLatestResponse>("/api/admin/users?limit=5", swrFetcher, {
+    dedupingInterval: 10_000,
+    keepPreviousData: true,
+  });
+
+  const isLoading = (!stats && !statsError) || (!latestData && !latestError);
+  const error = statsError ?? (stats ? undefined : latestError);
+  const isValidating = statsValidating || latestValidating;
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([mutateStats(), mutateLatest()]);
+    setUpdatedAt(new Date());
+  }, [mutateStats, mutateLatest]);
+
+  const total = stats?.total ?? 0;
+  const totalFiles = stats?.totalFiles ?? 0;
+
+  // Storage top-6 sudah diurutkan server (ORDER BY sum(size) DESC).
+  const storageData = useMemo(
+    () =>
+      (stats?.topStorage ?? []).map((u) => ({
+        name: u.name,
+        size: Math.round((u.totalSizeBytes / (1024 * 1024)) * 10) / 10, // MB
+        formatted: formatSize(u.totalSizeBytes),
+      })),
+    [stats]
   );
 
-  const users: UserItem[] = data?.users ?? [];
-  const total = data?.total ?? 0;
-  const admins = data?.admins ?? 0;
-  const banned = data?.banned ?? 0;
-  const verified = users.filter((u) => u.verified && !u.banned).length;
-  const unverified = users.filter((u) => !u.verified && !u.banned).length;
-  const totalBytes = users.reduce((sum, u) => sum + (u.totalSizeBytes ?? 0), 0);
-  const totalFiles = users.reduce((sum, u) => sum + (u.fileCount ?? 0), 0);
-  const verifiedShare = total > 0 ? Math.round((verified / total) * 100) : 0;
-  const avgBytes = total > 0 ? totalBytes / total : 0;
+  // 6 slot bulan lokal diisi dari agregat server (key YYYY-MM).
+  const months = useMemo(() => {
+    const now = new Date();
+    const slots: { key: string; month: string; users: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      slots.push({ key, month: monthLabel.format(d), users: 0 });
+    }
+    const byMonth = new Map<string, number>();
+    for (const row of stats?.signupsByMonth ?? []) {
+      byMonth.set(row.month.slice(0, 7), row.users);
+    }
+    for (const s of slots) {
+      s.users = byMonth.get(s.key) ?? 0;
+    }
+    return slots;
+  }, [stats]);
 
-  // Storage per user, top consumers first.
-  const storageData = users
-    .filter((u) => (u.totalSizeBytes ?? 0) > 0)
-    .sort((a, b) => (b.totalSizeBytes ?? 0) - (a.totalSizeBytes ?? 0))
-    .slice(0, 6)
-    .map((u) => ({
-      name: u.name,
-      size: Math.round(((u.totalSizeBytes ?? 0) / (1024 * 1024)) * 10) / 10, // MB
-      formatted: formatSize(u.totalSizeBytes ?? 0),
-    }));
+  // /api/admin/users sudah ORDER BY created_at DESC — 5 rows = 5 terbaru.
+  // P1-2: memo agar referensi stabil (tidak ada re-render turunan sia-sia).
+  const latestSignups: UserItem[] = useMemo(
+    () => latestData?.users ?? [],
+    [latestData]
+  );
 
-  // Signups per month, last six months.
-  const now = new Date();
-  const months: { month: string; users: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push({ month: monthLabel.format(d), users: 0 });
-  }
-  for (const u of users) {
-    const d = new Date(u.createdAt);
-    const diff =
-      (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
-    if (diff >= 0 && diff < 6) months[5 - diff].users += 1;
-  }
-
-  const latestSignups = users
-    .slice()
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
-
-  const stats = [
-    {
-      label: "Total users",
-      value: String(total),
-      hint: `${verifiedShare}% verified`,
-      icon: UsersIcon,
-      tint: "bg-primary/10 text-primary",
-    },
-    {
-      label: "Verified",
-      value: String(verified),
-      hint: `${unverified} awaiting verification`,
-      icon: CircleCheckIcon,
-      tint: "bg-success/10 text-success",
-    },
-    {
-      label: "Banned",
-      value: String(banned),
-      hint: banned > 0 ? "Cannot sign in" : "No banned accounts",
-      icon: BanIcon,
-      tint: "bg-destructive/10 text-destructive",
-    },
-    {
-      label: "Admins",
-      value: String(admins),
-      hint: "with full account access",
-      icon: ShieldIcon,
-      tint: "bg-accent text-accent-foreground",
-    },
-    {
-      label: "Storage used",
-      value: formatSize(totalBytes),
-      hint: `avg ${formatSize(avgBytes)} per account`,
-      icon: HardDriveIcon,
-      tint: "bg-chart-2/15 text-chart-2",
-    },
-  ];
+  const statsCards = useMemo(() => {
+    const totalCount = stats?.total ?? 0;
+    const verified = stats?.verified ?? 0;
+    const unverified = stats?.unverified ?? 0;
+    const banned = stats?.banned ?? 0;
+    const admins = stats?.admins ?? 0;
+    const totalBytes = stats?.totalBytes ?? 0;
+    const verifiedShare =
+      totalCount > 0 ? Math.round((verified / totalCount) * 100) : 0;
+    const avgBytes = totalCount > 0 ? totalBytes / totalCount : 0;
+    return [
+      {
+        label: "Total users",
+        value: String(totalCount),
+        hint: `${verifiedShare}% verified`,
+        icon: UsersIcon,
+        tint: "bg-primary/10 text-primary",
+      },
+      {
+        label: "Verified",
+        value: String(verified),
+        hint: `${unverified} awaiting verification`,
+        icon: CircleCheckIcon,
+        tint: "bg-success/10 text-success",
+      },
+      {
+        label: "Banned",
+        value: String(banned),
+        hint: banned > 0 ? "Cannot sign in" : "No banned accounts",
+        icon: BanIcon,
+        tint: "bg-destructive/10 text-destructive",
+      },
+      {
+        label: "Admins",
+        value: String(admins),
+        hint: "with full account access",
+        icon: ShieldIcon,
+        tint: "bg-accent text-accent-foreground",
+      },
+      {
+        label: "Storage used",
+        value: formatSize(totalBytes),
+        hint: `avg ${formatSize(avgBytes)} per account`,
+        icon: HardDriveIcon,
+        tint: "bg-chart-2/15 text-chart-2",
+      },
+    ];
+  }, [stats]);
 
   return (
     <main className="min-h-dvh">
@@ -225,7 +276,7 @@ export default function AdminOverview() {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => mutate()}
+              onClick={() => refreshAll()}
               disabled={isValidating}
               aria-label="Refresh data"
             >
@@ -268,7 +319,7 @@ export default function AdminOverview() {
                   Check your connection, then try again.
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => mutate()}>
+              <Button variant="outline" size="sm" onClick={() => refreshAll()}>
                 Try again
               </Button>
             </CardContent>
@@ -277,7 +328,7 @@ export default function AdminOverview() {
           <div className="space-y-4">
             {/* Stat strip */}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-              {stats.map((stat) => (
+              {statsCards.map((stat) => (
                 <Card key={stat.label}>
                   <CardContent className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -301,7 +352,7 @@ export default function AdminOverview() {
               ))}
             </div>
 
-            {/* Charts */}
+            {/* Charts — Card statis, isi chart lazy (P1-1). */}
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -309,25 +360,7 @@ export default function AdminOverview() {
                   <CardDescription>Registrations over the last six months.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ChartContainer config={signupsConfig} className="h-56 w-full">
-                    <BarChart data={months}>
-                      <CartesianGrid vertical={false} />
-                      <XAxis
-                        dataKey="month"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                      />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar
-                        dataKey="users"
-                        fill="var(--color-users)"
-                        radius={[6, 6, 0, 0]}
-                        maxBarSize={48}
-                        isAnimationActive={false}
-                      />
-                    </BarChart>
-                  </ChartContainer>
+                  <SignupsChart data={months} />
                 </CardContent>
               </Card>
 
@@ -345,38 +378,7 @@ export default function AdminOverview() {
                       No files stored yet — the chart fills in as users upload.
                     </div>
                   ) : (
-                    <ChartContainer config={storageConfig} className="h-56 w-full">
-                      <BarChart data={storageData} layout="vertical" margin={{ left: 12 }}>
-                        <CartesianGrid horizontal={false} />
-                        <XAxis
-                          type="number"
-                          tickLine={false}
-                          axisLine={false}
-                          tickMargin={8}
-                          tickFormatter={(v: number) => `${v} MB`}
-                        />
-                        <YAxis
-                          type="category"
-                          dataKey="name"
-                          tickLine={false}
-                          axisLine={false}
-                          width={90}
-                          tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
-                        />
-                        <ChartTooltip
-                          content={
-                            <ChartTooltipContent formatter={(_v, _n, item) => item?.payload?.formatted} />
-                          }
-                        />
-                        <Bar
-                          dataKey="size"
-                          fill="var(--color-size)"
-                          radius={[0, 6, 6, 0]}
-                          maxBarSize={20}
-                          isAnimationActive={false}
-                        />
-                      </BarChart>
-                    </ChartContainer>
+                    <StorageChart data={storageData} />
                   )}
                 </CardContent>
               </Card>

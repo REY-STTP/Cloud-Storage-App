@@ -16,7 +16,10 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-    const perPage = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit") || "10", 10)));
+    // P0-2: clamp ke 50. Overview lama memakai limit=500 via endpoint ini;
+    // sekarang overview memakai /api/admin/stats, jadi halaman list tidak
+    // perlu melayani payload raksasa.
+    const perPage = Math.max(1, Math.min(50, parseInt(url.searchParams.get("limit") || "10", 10)));
 
     // L-2: escape wildcard LIKE dari input user.
     const q = escapeLike((url.searchParams.get("q") || "").trim());
@@ -58,8 +61,20 @@ export async function GET(req: NextRequest) {
     }
     const whereClause = whereParts.length ? `where ${whereParts.join(" and ")}` : "";
 
+    // P0-2: page + counts global jalan paralel (counts tidak tergantung page).
+    // Counts yang filtered (total) + global (admins/banned) digabung dalam
+    // SATU scan users — sebelumnya 2x COUNT(*) = 2x full scan.
+    const countsPromise = query<{ total: number; admins: number; banned: number }>(
+      `select
+         count(*) filter (where ($1 = '' or name ilike '%' || $1 || '%' escape '\\' or email ilike '%' || $1 || '%' escape '\\')) as total,
+         count(*) filter (where role = 'ADMIN') as admins,
+         count(*) filter (where banned) as banned
+       from users`,
+      [q]
+    );
+
     values.push(perPage + 1);
-    const pageResult = await query<{
+    const pagePromise = query<{
       id: string;
       name: string;
       email: string;
@@ -76,6 +91,8 @@ export async function GET(req: NextRequest) {
       values
     );
 
+    const [pageResult, countsResult] = await Promise.all([pagePromise, countsPromise]);
+
     const rows = pageResult.rows;
     const hasMore = rows.length > perPage;
     const pageRows = hasMore ? rows.slice(0, perPage) : rows;
@@ -88,7 +105,8 @@ export async function GET(req: NextRequest) {
       ).toString("base64url");
     }
 
-    // Query 2 (Opsi B): stats file untuk 10-id halaman ini dalam SATU statement.
+    // Query 2 (Opsi B): stats file untuk id-id halaman ini dalam SATU statement.
+    // Hanya dijalankan untuk halaman kecil (<=50) — bukan 500 seperti dulu.
     const ids = pageRows.map((u) => u.id);
     const statsMap = new Map<string, { file_count: number; total_size: number }>();
     if (ids.length > 0) {
@@ -108,23 +126,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const totalResult = await query<{ count: number }>(
-      `select count(*) as count from users
-       where ($1 = '' or name ilike '%' || $1 || '%' or email ilike '%' || $1 || '%')`,
-      [q]
-    );
-
-
-    const statsResult = await query<{ admins: number; banned: number }>(
-      `select
-         count(*) filter (where role = 'ADMIN') as admins,
-         count(*) filter (where banned) as banned
-       from users`
-    );
-
-    const total = Number(totalResult.rows[0]?.count ?? 0);
-    const admins = Number(statsResult.rows[0]?.admins ?? 0);
-    const banned = Number(statsResult.rows[0]?.banned ?? 0);
+    // P0-2: total (filtered) + admins/banned (global) dari SATU query di atas.
+    // Dipertahankan di respons untuk kompatibilitas (/admin/users tidak
+    // memakai admins/banned, tapi klien lama mungkin masih membaca).
+    // Sumber utama angka global kini /api/admin/stats (cache 30s).
+    const total = Number(countsResult.rows[0]?.total ?? 0);
+    const admins = Number(countsResult.rows[0]?.admins ?? 0);
+    const banned = Number(countsResult.rows[0]?.banned ?? 0);
 
     const users = pageRows.map((u) => ({
       id: u.id,

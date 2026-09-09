@@ -3,12 +3,18 @@
 // The sidebar collapse state persists across navigation via the
 // `sidebar_state` cookie that SidebarProvider writes on toggle.
 //
-// M-3: guard server-side — proxy.ts hanya mengecek keberadaan cookie, sedangkan
-// layout ini memverifikasi tanda tangan JWT + role dari DB sebelum me-render.
+// P1-3 (dulu M-3): gerbang cepat tanpa DB — tanda tangan + expiry JWT +
+// klaim role ADMIN yang terverifikasi. Nol RTT Postgres di sini, menghemat
+// 1 lookup serial di setiap navigasi /admin.
+//
+// Penegakan otoritatif TETAP di API guards (requireAdmin memvalidasi ulang
+// role/banned/deleted dari DB per request). Konsekuensinya: pemegang token
+// basi (di-demote/di-ban <24 jam, sesudah ganti password) masih me-render
+// shell kosong — tapi semua fetch data 401/403 dan overview menampilkan
+// kartu error. Tidak ada kebocoran data: shell tidak memuat data user.
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyJwt } from "@/lib/auth";
-import { getUserById } from "@/lib/users";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,11 +27,10 @@ export default async function AdminLayout({
 }) {
   const cookieStore = await cookies();
 
-  // --- Guard admin (M-3): JWT valid + user ada + role ADMIN dari DB ---
+  // --- Guard admin (P1-3): klaim dari JWT terverifikasi, tanpa DB ---
   const token = cookieStore.get("token")?.value;
   const payload = token ? verifyJwt(token) : null;
-  const user = payload ? await getUserById(payload.userId) : null;
-  if (!user || user.banned || user.role !== "ADMIN") {
+  if (!payload || payload.role !== "ADMIN") {
     redirect("/login");
   }
 

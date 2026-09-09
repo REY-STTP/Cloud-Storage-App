@@ -27,9 +27,9 @@ Every file lives in a **private Cloudflare R2 bucket**. Downloads are served via
 - **Dark Mode** — System-aware theme toggle that persists across sessions.
 
 ### Admin Features
-- **Admin Dashboard** — Overview cards showing total users, admins, banned accounts, verified users, and total storage consumed.
-- **Analytics Charts** — Monthly sign-up trends and per-user storage usage visualized with interactive Recharts bar charts.
-- **User Management** — Full CRUD: search users, ban/unban accounts, delete users (cascades to their files), with batch selection support.
+- **Admin Dashboard** — Overview cards showing total users, admins, banned accounts, verified users, and total storage consumed. Aggregates are computed in SQL via `GET /api/admin/stats` (server-side 30s cache, <2KB payload) — the page never bulk-fetches users.
+- **Analytics Charts** — Monthly sign-up trends and per-user storage usage visualized with interactive Recharts bar charts, lazy-loaded with `next/dynamic` (`ssr: false`) so ~330KB of chart JS never blocks the initial paint.
+- **User Management** — Full CRUD: search users, ban/unban accounts, delete users (cascades to their files), with batch selection support. List API clamps `limit` to 50 with keyset pagination.
 - **Role Separation** — Admin routes (`/admin/*`) are fully separated from user routes (`/dashboard/*`) with middleware-level protection.
 
 ### Security & Infrastructure
@@ -55,7 +55,7 @@ Every file lives in a **private Cloudflare R2 bucket**. Downloads are served via
 | **Authentication** | JWT + bcrypt | `jsonwebtoken` for signing/verifying, `bcryptjs` for hashing |
 | **Email** | [Nodemailer](https://nodemailer.com/) | SMTP transport (Gmail, etc.) with Ethereal fallback for development |
 | **Styling** | [Tailwind CSS v4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) | 25 UI components, custom design tokens |
-| **Charts** | [Recharts 3](https://recharts.org/) | Interactive bar charts on the admin dashboard |
+| **Charts** | [Recharts 3](https://recharts.org/) | Admin dashboard charts, lazy-loaded via `next/dynamic` (`ssr: false`) |
 | **Animations** | [GSAP 3](https://gsap.com/) | Landing page scroll-triggered reveal animations |
 | **Data Fetching** | [SWR 2](https://swr.vercel.app/) | Client-side data fetching with automatic revalidation |
 | **Icons** | [Lucide React](https://lucide.dev/) | Consistent icon system across the entire UI |
@@ -93,8 +93,8 @@ cloud-storage-app/
 │   │       └── page.tsx            # Profile settings (name, password, verification)
 │   │
 │   ├── admin/
-│   │   ├── layout.tsx              # Admin layout with sidebar
-│   │   ├── page.tsx                # Admin overview (stats + charts)
+│   │   ├── layout.tsx              # Admin layout with sidebar (fast claim-gate: verified JWT + ADMIN role, no DB)
+│   │   ├── page.tsx                # Admin overview (stats API + latest 5, lazy charts)
 │   │   └── users/
 │   │       └── page.tsx            # User management (search, ban, delete)
 │   │
@@ -121,7 +121,14 @@ cloud-storage-app/
 │       │           └── route.ts    # POST — bulk download as ZIP
 │       │
 │       ├── admin/
-│       │   └── users/              # GET (list) / PATCH (ban/unban) / DELETE
+│       │   ├── stats/
+│       │   │   └── route.ts        # GET — global aggregates (30s server cache, no-store to client)
+│       │   └── users/
+│       │       ├── route.ts        # GET (list, limit ≤ 50, keyset pagination, merged counts)
+│       │       ├── [id]/
+│       │       │   └── route.ts    # PATCH (ban/unban) / DELETE (single user)
+│       │       └── batch/
+│       │           └── route.ts    # PATCH / DELETE — bulk operations by IDs
 │       │
 │       └── user/
 │           ├── profile/            # GET / PATCH — profile info & update
@@ -138,7 +145,9 @@ cloud-storage-app/
 │   ├── ConfirmDialogProvider.tsx   # Confirm dialog context
 │   ├── SwrProvider.tsx             # SWR configuration provider
 │   ├── admin/
-│   │   └── AdminSidebar.tsx        # Admin panel sidebar navigation
+│   │   ├── AdminSidebar.tsx        # Admin panel sidebar navigation
+│   │   ├── SignupsChart.tsx        # Lazy "new users by month" bar chart (recharts)
+│   │   └── StorageChart.tsx        # Lazy "storage per user" bar chart (recharts)
 │   ├── landing/
 │   │   ├── HeroPreview.tsx         # CSS-built product preview component
 │   │   ├── PinnedPrivacy.tsx       # GSAP-pinned privacy section
@@ -180,7 +189,7 @@ cloud-storage-app/
 │   ├── rate-limit.ts               # Fixed-window in-memory rate limiter
 │   ├── storage.ts                  # Cloudflare R2 client (S3-compatible)
 │   ├── types.ts                    # Shared TypeScript types (UserRow, FileRow)
-│   ├── users.ts                    # User lookup helpers
+│   ├── users.ts                    # User lookup helpers (per-request memoized via React `cache`)
 │   ├── useDarkMode.ts              # Dark mode hook (system-aware)
 │   └── utils.ts                    # Utility functions (cn)
 │
@@ -189,7 +198,10 @@ cloud-storage-app/
 │
 ├── scripts/
 │   ├── seed.mjs                    # Seed initial admin account
-│   └── supabase-schema.sql         # Full database schema (idempotent)
+│   └── supabase-schema.sql         # Full database schema (idempotent, incl. pg_trgm + admin indexes)
+│
+├── docs/
+│   └── TASKS.md                    # Admin performance audit tasks (P0/P1 status log)
 │
 ├── proxy.ts                        # Canonical-host 308 redirect first, then route protection (auth guard)
 ├── public/
@@ -231,7 +243,7 @@ npm install
    - `users` table — stores accounts with `uuid` PKs, role (`USER`/`ADMIN`), verification and ban status
    - `files` table — stores file metadata with `owner` FK that cascades on user deletion
    - `set_updated_at()` trigger function — auto-updates `updated_at` on row changes
-   - Performance indexes on `owner`, `created_at`, `role`, and `banned` columns
+   - Performance indexes on `owner`, `(created_at, id)`, `role`, and `banned` columns, plus trigram (GIN) indexes on `name`/`email` for `ILIKE '%…%'` search (requires the `pg_trgm` extension, also created by the script)
    - **Row Level Security** with zero policies + revoked `anon`/`authenticated` access
 
 3. Copy your connection string from **Project Settings → Database → Connection string**. Use the **Session pooler** URI (port `5432`) — it works from IPv4-only networks.
@@ -349,9 +361,12 @@ All API routes live under `/api`. Authentication is via the `token` cookie (JWT)
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/admin/users` | List all users with file counts and storage usage |
-| `PATCH` | `/api/admin/users` | Ban or unban a user |
-| `DELETE` | `/api/admin/users` | Delete a user (cascades to all their files in R2 + DB) |
+| `GET` | `/api/admin/stats` | Global aggregates (totals, signups by month, top storage). Computed in SQL, 30s server-side cache, `no-store` to clients |
+| `GET` | `/api/admin/users` | List users with file counts and storage usage (`limit` ≤ 50, keyset pagination, single merged counts query) |
+| `PATCH` | `/api/admin/users/:id` | Ban or unban a single user (`{ banned: true/false }`) |
+| `DELETE` | `/api/admin/users/:id` | Delete a single user (cascades to all their files in R2 + DB) |
+| `PATCH` | `/api/admin/users/batch` | Ban/unban multiple users by IDs |
+| `DELETE` | `/api/admin/users/batch` | Delete multiple users by IDs |
 
 ---
 
@@ -413,7 +428,10 @@ The application uses two tables in Supabase Postgres. The full schema is in [`sc
 | `files_owner_created_at_idx` | `owner, created_at DESC` | Paginated file listing |
 | `users_role_idx` | `role` | Filter by role in admin panel |
 | `users_banned_idx` | `banned` | Filter banned users |
-| `users_created_at_idx` | `created_at DESC` | Admin user listing |
+| `users_created_at_idx` | `created_at DESC` | Admin user listing (kept; composite below covers it too) |
+| `users_created_at_id_idx` | `created_at DESC, id DESC` | Keyset pagination `WHERE (created_at, id) < (…)` — index-only scan |
+| `users_name_trgm_idx` | `name` (GIN trigram) | `ILIKE '%…%'` name search without seq-scan (needs `pg_trgm`) |
+| `users_email_trgm_idx` | `email` (GIN trigram) | `ILIKE '%…%'` email search without seq-scan (needs `pg_trgm`) |
 
 ### Design Notes
 
@@ -430,6 +448,7 @@ The application uses two tables in Supabase Postgres. The full schema is in [`sc
 | **Password Storage** | bcrypt with 12 salt rounds — never stored in plain text |
 | **Session Management** | JWT signed with `JWT_SECRET`, stored in `httpOnly` cookie, 1-day expiry |
 | **Route Protection** | `proxy.ts` middleware redirects unauthenticated requests from `/dashboard/*` and `/admin/*` to `/login` |
+| **Admin Layered Auth** | `/admin` layout is a fast claim-gate (verified JWT signature + `ADMIN` role, zero DB round-trips); every admin API route independently re-validates role/status from the database, so stale tokens can render an empty shell at most — never data |
 | **API Authorization** | Every API route independently verifies the JWT and checks user role/status |
 | **File Access** | Files are only accessible via presigned URLs generated server-side for the authenticated owner |
 | **SQL Injection** | All queries use parameterized placeholders (`$1`, `$2`, …) — no string concatenation |
