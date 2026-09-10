@@ -4,8 +4,11 @@ import { query } from "@/lib/db";
 import { requireUser } from "@/lib/guards";
 import { jsonNoStore } from "@/lib/http";
 
-const MAX_STORAGE_BYTES =
-  Number(process.env.MAX_STORAGE_BYTES ?? 1073741824);
+// Lihat catatan parseInt defensif di app/api/files/route.ts (D0-P0-2 susulan).
+const MAX_STORAGE_BYTES = (() => {
+  const v = Number.parseInt(process.env.MAX_STORAGE_BYTES ?? "", 10);
+  return Number.isFinite(v) && v > 0 ? v : 1073741824;
+})();
 
 export async function GET(req: NextRequest) {
   const guard = await requireUser(req);

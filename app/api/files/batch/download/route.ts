@@ -90,6 +90,17 @@ export async function POST(req: NextRequest) {
     }
 
     const archive = archiver("zip", { store: true });
+    // D1-P1-4: error mid-stream tidak boleh diam — abort agar koneksi tidak
+    // menggantung dengan arsip korup (trade-off Content-Length tak diketahui
+    // tetap berlaku, didokumentasikan di bawah).
+    archive.on("error", (err) => {
+      console.error("Archive error:", err);
+      try {
+        archive.abort();
+      } catch {
+        // abort hanya best-effort; stream yang sudah rusak ditutup Next.
+      }
+    });
 
     for (const f of files) {
       const filename = f.originalName || f.filename || `file-${f.id}`;
@@ -101,10 +112,12 @@ export async function POST(req: NextRequest) {
 
       try {
         // Bucket privat: minta link presigned singkat lalu streaming isinya.
+        // D1-P1-4: 120s per objek (dulu 30s — putus untuk file besar di
+        // jaringan lambat; total tetap dibatasi 200MB di atas).
         const downloadUrl = await getDownloadUrl(f.publicId);
         const res = await axios.get(downloadUrl, {
           responseType: "stream",
-          timeout: 30000,
+          timeout: 120_000,
           maxRedirects: 5,
         });
 

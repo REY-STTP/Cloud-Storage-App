@@ -70,6 +70,8 @@ create index if not exists users_created_at_id_idx on users (created_at desc, id
 -- pg_trgm membuat '%foo%' tetap memakai index (GIN).
 create index if not exists users_name_trgm_idx on users using gin (name gin_trgm_ops);
 create index if not exists users_email_trgm_idx on users using gin (email gin_trgm_ops);
+-- search filename di GET /api/files punya masalah yang sama.
+create index if not exists files_filename_trgm_idx on files using gin (filename gin_trgm_ops);
 
 -- ---------- LOCK DOWN THE PUBLIC API ----------
 -- This app talks to Postgres directly (see lib/db.ts) and enforces access in the

@@ -15,8 +15,14 @@ import type { FileRow } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-const MAX_STORAGE_BYTES =
-  Number(process.env.MAX_STORAGE_BYTES ?? 1073741824);
+const MAX_STORAGE_BYTES = (() => {
+  // D0-P0-2 susulan: Number("1073741824 # komentar") = NaN yang mematikan
+  // guard 413 DAN penegakan kuota secara diam-diam (x > NaN selalu false).
+  // parseInt berhenti di karakter non-digit sehingga format .env dengan
+  // komentar trailing tetap aman; nilai tak valid jatuh ke default 1 GB.
+  const v = Number.parseInt(process.env.MAX_STORAGE_BYTES ?? "", 10);
+  return Number.isFinite(v) && v > 0 ? v : 1073741824;
+})();
 
 /** H-3: maksimal file per request upload. */
 const MAX_FILES_PER_REQUEST = 10;
@@ -97,6 +103,29 @@ function isOfficeMagic(buf: Buffer): boolean {
   );
 }
 
+/** D1-P1-1: konkurensi PUT R2 — I/O-bound, jangan serial (10 file). */
+const UPLOAD_CONCURRENCY = 3;
+
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.max(1, Math.min(limit, items.length)) },
+    async () => {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await fn(items[i], i);
+      }
+    }
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 function hasValidMagic(ext: string, buf: Buffer): boolean {
   if (OFFICE_EXTS.has(ext)) return isOfficeMagic(buf);
   const check = MAGIC_CHECKS[ext];
@@ -154,7 +183,8 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10)));
+    // D0-P0-4: samakan dengan admin (50). Client selalu minta 10.
+    const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10)));
 
     // L-2: escape wildcard LIKE dari input user.
     const q = escapeLike((url.searchParams.get("q") || "").trim());
@@ -198,8 +228,10 @@ export async function GET(req: NextRequest) {
     }
 
     // Ambil limit+1 untuk mendeteksi keberadaan halaman berikutnya.
+    // D0-P0-3: page + count independen (hanya berbagi owner+q) -> paralel,
+    // menghemat ~1 RTT. Pola yang sama sudah dipakai di admin P0-2.
     values.push(limit + 1);
-    const docsResult = await query<FileRow>(
+    const pagePromise = query<FileRow>(
       `select id, filename, original_name as "originalName", mime_type as "mimeType",
               resource_type as "resourceType", url, public_id as "publicId",
               size, owner, created_at as "createdAt", updated_at as "updatedAt"
@@ -209,6 +241,13 @@ export async function GET(req: NextRequest) {
        limit $${values.length}`,
       values
     );
+    const countPromise = query<{ count: number }>(
+      `select count(*) as count from files where owner = $1 ${
+        q ? "and filename ilike $2" : ""
+      }`,
+      q ? [user.id, `%${q}%`] : [user.id]
+    );
+    const [docsResult, totalResult] = await Promise.all([pagePromise, countPromise]);
 
     const rows = docsResult.rows;
     const hasMore = rows.length > limit;
@@ -222,12 +261,6 @@ export async function GET(req: NextRequest) {
       ).toString("base64url");
     }
 
-    const totalResult = await query<{ count: number }>(
-      `select count(*) as count from files where owner = $1 ${
-        q ? "and filename ilike $2" : ""
-      }`,
-      q ? [user.id, `%${q}%`] : [user.id]
-    );
     const total = Number(totalResult.rows[0]?.count ?? 0);
 
     const files = pageRows.map((f) => ({
@@ -271,6 +304,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // D0-P0-2: tolak request raksasa SEBELUM formData() mem-parse seluruh
+  // multipart ke heap (10 file x 100MB ~= 1GB tanpa guard ini). Batas =
+  // kuota user + margin overhead multipart. Tanpa content-length (chunked)
+  // pemeriksaan dilewat — proteksi per-file tetap berlaku di bawah.
+  const contentLength = Number(req.headers.get("content-length") ?? 0);
+  const MAX_REQUEST_BYTES = MAX_STORAGE_BYTES + 16 * 1024 * 1024;
+  if (contentLength > MAX_REQUEST_BYTES) {
+    return NextResponse.json(
+      { message: "Upload too large. Reduce the number or size of files and try again." },
+      { status: 413 }
+    );
+  }
+
   const formData = await req.formData();
   const files = formData.getAll("files") as File[];
 
@@ -286,58 +332,104 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const usageResult = await query<{ totalSize: number }>(
-    // ::bigint so pg returns a number rather than numeric-as-string.
-    'select coalesce(sum(size), 0)::bigint as "totalSize" from files where owner = $1',
-    [user.id]
+  // ---- D1-P1-1: tiga fase, bukan loop serial + PUT-dulu ----
+  // Fase A: baca + validasi SEMUA file paralel (I/O-bound, tanpa R2/DB).
+  // Fase B: SATU lock + sum untuk seleksi kuota batch SEBELUM R2 (tidak ada
+  //   upload sia-sia di kasus umum; re-check final tetap di tx per-file).
+  // Fase C: PUT R2 paralel (<=3) -> tx insert per file (urutan safety lama:
+  //   baris DB hanya ditulis setelah objek masuk R2).
+  type InvalidItem = { index: number; ok: false; filename: string; error: string };
+  type ValidItem = {
+    index: number;
+    ok: true;
+    file: File;
+    buffer: Buffer;
+    finalBytes: number;
+    category?: string;
+    mimeType: string;
+    key: string;
+  };
+
+  const prepared: (InvalidItem | ValidItem)[] = await Promise.all(
+    files.map(async (file, index): Promise<InvalidItem | ValidItem> => {
+      if (!(file instanceof Blob)) {
+        return { index, ok: false, filename: "unknown", error: "Invalid file" };
+      }
+      // Baca konten lebih dulu — dibutuhkan untuk verifikasi magic bytes.
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const validation = validateFile(file, buffer);
+      if (!validation.valid) {
+        return {
+          index,
+          ok: false,
+          filename: file.name,
+          error: validation.error ?? "Invalid file",
+        };
+      }
+      return {
+        index,
+        ok: true,
+        file,
+        buffer,
+        finalBytes: buffer.length,
+        category: validation.category,
+        mimeType: file.type || "application/octet-stream",
+        key: buildObjectKey(file.name),
+      };
+    })
   );
 
-  let usedBytes = Number(usageResult.rows[0]?.totalSize ?? 0);
-
-  const savedFiles: Array<Record<string, unknown>> = [];
-
-  for (const file of files) {
-    if (!(file instanceof Blob)) continue;
-
-    // Baca konten lebih dulu — dibutuhkan untuk verifikasi magic bytes.
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const finalBytes = buffer.length;
-
-    const validation = validateFile(file, buffer);
-    if (!validation.valid) {
-      savedFiles.push({
-        id: null,
-        filename: file.name,
-        error: validation.error,
-      });
-      continue;
+  const outcomeByIndex = new Map<number, Record<string, unknown>>();
+  for (const p of prepared) {
+    if (!p.ok) {
+      outcomeByIndex.set(p.index, { id: null, filename: p.filename, error: p.error });
     }
+  }
+  const validItems = prepared.filter((p): p is ValidItem => p.ok);
 
-    const fileSize = finalBytes;
-
-    if (usedBytes + fileSize > MAX_STORAGE_BYTES) {
-      savedFiles.push({
-        id: null,
-        filename: file.name,
-        error:
-          "Your storage has reached its maximum capacity. Please delete some files first.",
-      });
-      continue;
-    }
-
+  // Fase B: seleksi kuota batch dalam satu transaksi terkunci.
+  const accepted: ValidItem[] = [];
+  if (validItems.length > 0) {
+    const quotaClient = await pool.connect();
     try {
-      let resourceType: "image" | "video" | "raw" = "raw";
-      if (validation.category === "images") {
-        resourceType = "image";
-      } else if (validation.category === "videos") {
-        resourceType = "video";
+      await quotaClient.query("begin");
+      await quotaClient.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+        user.id,
+      ]);
+      const usage = await quotaClient.query<{ totalSize: number }>(
+        'select coalesce(sum(size), 0)::bigint as "totalSize" from files where owner = $1',
+        [user.id]
+      );
+      let currentBytes = Number(usage.rows[0]?.totalSize ?? 0);
+      for (const item of validItems) {
+        if (currentBytes + item.finalBytes > MAX_STORAGE_BYTES) {
+          outcomeByIndex.set(item.index, {
+            id: null,
+            filename: item.file.name,
+            error:
+              "Your storage has reached its maximum capacity. Please delete some files first.",
+          });
+        } else {
+          currentBytes += item.finalBytes;
+          accepted.push(item);
+        }
       }
+      await quotaClient.query("commit");
+    } catch (quotaErr) {
+      await quotaClient.query("rollback").catch(() => {});
+      console.error("Batch quota check error:", quotaErr);
+      return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+    } finally {
+      quotaClient.release();
+    }
+  }
 
-      const mimeType = file.type || "application/octet-stream";
-      const key = buildObjectKey(file.name);
-
+  // Fase C: PUT + insert per file, paralel terbatas. Hasil dipetakan kembali
+  // ke index input agar urutan respons = urutan file yang dipilih.
+  const putOutcomes = await mapLimit(accepted, UPLOAD_CONCURRENCY, async (item) => {
+    try {
       try {
-        await putObject(key, buffer, mimeType);
+        await putObject(item.key, item.buffer, item.mimeType);
       } catch (uploadErr) {
         console.error("R2 upload error:", uploadErr);
         throw new Error(
@@ -348,9 +440,9 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Cek kuota + insert dilakukan atomik dalam satu transaksi dengan
-      // advisory lock per user, sehingga request paralel dari user yang sama
-      // tidak bisa saling menyelinap melewati batas penyimpanan.
+      // Cek kuota + insert atomik dalam satu transaksi dengan advisory lock
+      // per user — re-check final melawan request paralel (Fase B hanya
+      // seleksi awal). Gagal kuota di sini -> hapus objek R2 yang barusan naik.
       const client = await pool.connect();
       let saved: FileRow;
       try {
@@ -365,26 +457,33 @@ export async function POST(req: NextRequest) {
         );
         const currentBytes = Number(usage.rows[0]?.totalSize ?? 0);
 
-        if (currentBytes + finalBytes > MAX_STORAGE_BYTES) {
-          // Kuota terlampaui — batalkan, dan hapus objek yang sudah terlanjur
-          // di-upload ke R2 supaya tidak jadi sampah.
+        if (currentBytes + item.finalBytes > MAX_STORAGE_BYTES) {
           await client.query("rollback");
           try {
-            await deleteObject(key);
+            await deleteObject(item.key);
           } catch (destroyErr) {
             console.warn(
               "Failed to clean up R2 object after quota rejection:",
-              key,
+              item.key,
               destroyErr
             );
           }
-          savedFiles.push({
-            id: null,
-            filename: file.name,
-            error:
-              "Your storage has reached its maximum capacity. Please delete some files first.",
-          });
-          continue;
+          return {
+            index: item.index,
+            entry: {
+              id: null,
+              filename: item.file.name,
+              error:
+                "Your storage has reached its maximum capacity. Please delete some files first.",
+            },
+          };
+        }
+
+        let resourceType: "image" | "video" | "raw" = "raw";
+        if (item.category === "images") {
+          resourceType = "image";
+        } else if (item.category === "videos") {
+          resourceType = "video";
         }
 
         const savedResult = await client.query<FileRow>(
@@ -394,12 +493,12 @@ export async function POST(req: NextRequest) {
                      resource_type as "resourceType", url, public_id as "publicId",
                      size, owner, created_at as "createdAt", updated_at as "updatedAt"`,
           [
-            file.name,
-            file.name,
-            canonicalUrl(key),
-            key,
-            finalBytes,
-            mimeType,
+            item.file.name,
+            item.file.name,
+            canonicalUrl(item.key),
+            item.key,
+            item.finalBytes,
+            item.mimeType,
             resourceType,
             user.id,
           ]
@@ -411,25 +510,26 @@ export async function POST(req: NextRequest) {
         await client.query("rollback").catch(() => {});
         // Objek sudah masuk R2 tapi baris DB gagal — bersihkan.
         try {
-          await deleteObject(key);
+          await deleteObject(item.key);
         } catch (cleanupErr) {
-          console.warn("Failed to clean up orphaned R2 object:", key, cleanupErr);
+          console.warn("Failed to clean up orphaned R2 object:", item.key, cleanupErr);
         }
         throw txErr;
       } finally {
         client.release();
       }
 
-      usedBytes += saved.size ?? fileSize;
-
-      savedFiles.push({
-        id: saved.id,
-        filename: saved.filename,
-        url: saved.url,
-        size: saved.size,
-        mimeType: saved.mimeType,
-        createdAt: saved.createdAt,
-      });
+      return {
+        index: item.index,
+        entry: {
+          id: saved.id,
+          filename: saved.filename,
+          url: saved.url,
+          size: saved.size,
+          mimeType: saved.mimeType,
+          createdAt: saved.createdAt,
+        },
+      };
     } catch (err) {
       const errorMessage =
         err instanceof Error
@@ -437,13 +537,17 @@ export async function POST(req: NextRequest) {
           : typeof err === "object" && err !== null && "message" in err
             ? String((err as { message: unknown }).message)
             : String(err);
-      savedFiles.push({
-        id: null,
-        filename: file.name,
-        error: errorMessage,
-      });
+      return {
+        index: item.index,
+        entry: { id: null, filename: item.file.name, error: errorMessage },
+      };
     }
+  });
+  for (const { index, entry } of putOutcomes) {
+    outcomeByIndex.set(index, entry);
   }
+
+  const savedFiles = prepared.map((p) => outcomeByIndex.get(p.index));
 
   return NextResponse.json(savedFiles, { status: 201 });
 }

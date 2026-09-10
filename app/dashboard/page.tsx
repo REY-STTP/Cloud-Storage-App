@@ -128,10 +128,14 @@ export default function DashboardPage() {
   }, [debouncedQuery]);
 
   // ---- data via SWR: cache + dedupe otomatis antar navigasi ----
-  const { data: profile } = useSWR<UserProfile>("/api/user/profile", swrFetcher);
+  // D1-P1-3: dedupe 10s agar mount ganda / re-render tidak menembak API berulang.
+  const { data: profile } = useSWR<UserProfile>("/api/user/profile", swrFetcher, {
+    dedupingInterval: 10_000,
+  });
   const { data: storage, mutate: mutateStorage } = useSWR<StorageInfo>(
     "/api/user/storage",
-    swrFetcher
+    swrFetcher,
+    { dedupingInterval: 10_000 }
   );
 
   const filesParams = new URLSearchParams({ limit: String(perPage) });
@@ -141,7 +145,7 @@ export default function DashboardPage() {
     `/api/files?${filesParams.toString()}`,
     swrFetcher,
     // Selama pindah halaman, daftar lama tetap tampil (tidak berkedip kosong).
-    { keepPreviousData: true }
+    { keepPreviousData: true, dedupingInterval: 10_000 }
   );
 
   const files: FileItem[] = filesData?.files ?? [];
@@ -176,6 +180,22 @@ export default function DashboardPage() {
       showToast("warning", "Please select at least one file to upload");
       return;
     }
+
+    // D1-P1-3: validasi dini di client — jangan kirim ratusan MB yang pasti
+    // ditolak server (10 file × 100MB tanpa feedback = spinner misterius).
+    if (filesToUpload.length > 10) {
+      showToast("warning", "Too many files. Maximum 10 files per upload.");
+      return;
+    }
+    const pickedBytes = filesToUpload.reduce((sum, f) => sum + f.size, 0);
+    if (storage && pickedBytes > storage.remainingBytes) {
+      showToast(
+        "error",
+        `Not enough storage: selected ${formatSize(pickedBytes)} but only ${formatSize(storage.remainingBytes)} remains.`
+      );
+      return;
+    }
+    showToast("info", `Uploading ${filesToUpload.length} file(s) (${formatSize(pickedBytes)})...`);
 
     const formData = new FormData();
     for (const f of filesToUpload) formData.append("files", f);
@@ -328,6 +348,28 @@ export default function DashboardPage() {
     if (selectedFiles.size === 0) {
       showToast("warning", "Please select at least one file to download");
       return;
+    }
+
+    // D1-P1-2: 1 file -> navigasi langsung ke endpoint download (server
+    // redirect ke presigned URL). Tanpa res.blob(): heap browser aman bahkan
+    // untuk file ratusan MB.
+    if (selectedFiles.size === 1) {
+      const [id] = Array.from(selectedFiles);
+      // Intentional full navigation (not router.push): API download endpoint.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = `/api/files/${id}`;
+      return;
+    }
+
+    // Multi-file tetap via blob + ZIP server; peringatkan batch jumbo.
+    const selectedBytes = files
+      .filter((f) => selectedFiles.has(f.id))
+      .reduce((sum, f) => sum + (f.size ?? 0), 0);
+    if (selectedBytes > 100 * 1024 * 1024) {
+      showToast(
+        "warning",
+        `Large download (${formatSize(selectedBytes)}). Keep this tab open until it finishes.`
+      );
     }
 
     setBatchLoading(true);

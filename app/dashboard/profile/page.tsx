@@ -4,6 +4,7 @@
 import { FormEvent, useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
+import { swrFetcher } from "@/components/SwrProvider";
 import AppNavbar from "@/components/AppNavbar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -70,9 +72,8 @@ function ProfilePageContent() {
   const params = useSearchParams();
 
   const { showToast } = useToast();
-  const { confirm } = useConfirmDialog();
+  const { confirm, confirmWithPassword } = useConfirmDialog();
 
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -82,59 +83,59 @@ function ProfilePageContent() {
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
 
-  async function loadProfile() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/user/profile");
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        showToast("error", data?.message || "Failed to load profile");
-      } else {
-        const data: Profile = await res.json();
-        setProfile(data);
-        setName(data.name || "");
-      }
-    } catch (e) {
-      console.error(e);
-      showToast("error", "Server error while loading profile");
-    } finally {
-      setLoading(false);
-    }
-  }
+  // D1-P1-3: cache SWR bersama dengan dashboard (key identik
+  // "/api/user/profile") — rename di sini langsung tercermin di greeting
+  // dashboard tanpa fetch ganda; error global ditangani SwrProvider.
+  const {
+    data: profile,
+    isLoading: loading,
+    mutate: mutateProfile,
+  } = useSWR<Profile>("/api/user/profile", swrFetcher, {
+    dedupingInterval: 10_000,
+    keepPreviousData: true,
+  });
 
+  // Sinkronkan field nama hanya saat akun yang dimuat berganti (jangan
+  // menimpa ketikan user di tiap revalidasi).
+  const profileId = profile?.id;
   useEffect(() => {
-    loadProfile();
+    if (profile) {
+      setName(profile.name || "");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [profileId]);
 
   useEffect(() => {
     const v = params?.get("verified");
     if (v === "1") {
       showToast("success", "Email verified successfully.");
-      loadProfile();
+      mutateProfile();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params]);
+  }, [params, mutateProfile]);
 
   async function handleDeleteAccount() {
-    const ok = await confirm({
+    // D0-P0-1: server (M-5) mewajibkan currentPassword — dialog meminta
+    // password dulu; tanpa ini DELETE selalu 400 dan fitur mati total.
+    const currentPassword = await confirmWithPassword({
       title: "Delete your account?",
       description:
-        "This will permanently delete your account and all files. This action cannot be undone. Are you sure?",
+        "This will permanently delete your account and all files. This action cannot be undone. Enter your password to confirm.",
       confirmLabel: "Delete account",
       cancelLabel: "Cancel",
       danger: true,
     })
 
-    if (!ok) return;
+    if (!currentPassword) return;
 
     try {
       const res = await fetch("/api/user/profile", {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -223,9 +224,8 @@ function ProfilePageContent() {
         showToast("error", data?.message || "Failed to update profile");
       } else {
         showToast("success", "Profile updated successfully");
-        if (data?.name) {
-          setProfile((prev) => (prev ? { ...prev, name: data.name } : prev));
-        }
+        // D1-P1-3: revalidasi cache bersama — greeting dashboard ikut segar.
+        await mutateProfile();
         setCurrentPassword("");
         setNewPassword("");
         setConfirmNewPassword("");

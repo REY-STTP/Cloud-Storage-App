@@ -341,7 +341,7 @@ All API routes live under `/api`. Authentication is via the `token` cookie (JWT)
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/files` | List user's files (supports `?search=`, `?page=`, `?perPage=`) |
+| `GET` | `/api/files` | List user's files (`limit` ≤ 50, keyset pagination, parallel page+count; uploads reject oversized requests with 413 before parsing) |
 | `POST` | `/api/files` | Upload a file (multipart/form-data) |
 | `GET` | `/api/files/:id` | Download a file (redirects to presigned URL) |
 | `PATCH` | `/api/files/:id` | Rename a file |
@@ -432,6 +432,7 @@ The application uses two tables in Supabase Postgres. The full schema is in [`sc
 | `users_created_at_id_idx` | `created_at DESC, id DESC` | Keyset pagination `WHERE (created_at, id) < (…)` — index-only scan |
 | `users_name_trgm_idx` | `name` (GIN trigram) | `ILIKE '%…%'` name search without seq-scan (needs `pg_trgm`) |
 | `users_email_trgm_idx` | `email` (GIN trigram) | `ILIKE '%…%'` email search without seq-scan (needs `pg_trgm`) |
+| `files_filename_trgm_idx` | `filename` (GIN trigram) | `ILIKE '%…%'` file search (needs `pg_trgm`) |
 
 ### Design Notes
 
